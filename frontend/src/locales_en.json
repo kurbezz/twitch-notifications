@@ -1,0 +1,420 @@
+{
+  "app": {
+    "name": "Twitch Notifications"
+  },
+  "layout": {
+    "nav": {
+      "home": "Home",
+      "integrations": "Integrations",
+      "settings": "Settings",
+      "history": "History"
+    },
+    "logout": "Log out",
+    "footer": {
+      "github": "GitHub",
+      "twitch": "Twitch",
+      "copyright": "© {{year}} Twitch Notifications"
+    }
+  },
+  "home": {
+    "tagline": "Notifications for streamers",
+    "hero": {
+      "title_prefix": "Notify viewers about",
+      "title_strong": "your streams",
+      "subtitle": "Configure automatic notifications to Telegram and Discord for stream start, category changes and channel point redemptions.",
+      "start_now": "Get started",
+      "learn_more": "Learn more",
+      "login": "Sign in with Twitch"
+    },
+    "features": {
+      "title": "Everything you need for notifications",
+      "subtitle": "Powerful tools to engage your audience",
+      "stream_notifications": {
+        "title": "Stream notifications",
+        "description": "Instant alerts for stream start, title or category changes."
+      },
+      "telegram": {
+        "title": "Telegram integration",
+        "description": "Send notifications to Telegram channels or groups for your viewers."
+      },
+      "discord": {
+        "title": "Discord integration",
+        "description": "Publish notifications to your Discord server with rich embeds."
+      },
+      "rewards": {
+        "title": "Channel point rewards",
+        "description": "Track reward activations and send automated chat responses."
+      },
+      "calendar": {
+        "title": "Calendar sync",
+        "description": "Automatically sync your Twitch schedule with Discord Events."
+      },
+      "custom_messages": {
+        "title": "Customizable messages",
+        "description": "Full template customization with placeholders for dynamic content."
+      }
+    },
+    "cta": {
+      "ready": "Ready to get started?",
+      "subtitle": "Connect your Twitch account and configure notifications in minutes."
+    }
+  },
+  "login": {
+    "title": "Twitch Notifications",
+    "subtitle": "Notifications about your streams to Telegram and Discord",
+    "login_button": "Sign in with Twitch",
+    "accept_terms": "By signing in you agree to the {{terms}} and {{privacy}}",
+    "terms_text": "Terms of Service",
+    "privacy_text": "Privacy Policy",
+    "features_title": "Features",
+    "features": {
+      "stream_notifications": {
+        "title": "Stream notifications",
+        "description": "Get alerts for stream start, title or category changes."
+      },
+      "rewards": {
+        "title": "Channel point rewards",
+        "description": "Automatically respond in chat when viewers redeem rewards."
+      },
+      "tg_dc": {
+        "title": "Telegram & Discord",
+        "description": "Send notifications to Telegram, Discord, or both."
+      },
+      "security": {
+        "title": "Security",
+        "description": "Your data is protected and never shared with third parties."
+      }
+    },
+    "footer": "Made with ❤️ for the Twitch community"
+  },
+  "dashboard": {
+    "greeting": "Hi, {{name}}! 👋",
+    "overview": "Overview of your notifications",
+    "twitch_channel": "Twitch channel",
+    "chat": "Chat",
+    "stats": {
+      "total_notifications": "Total notifications",
+      "all_time": "All time",
+      "successful": "Successful",
+      "errors": "Errors",
+      "active_integrations": "Active integrations",
+      "configured": "of {{count}} configured"
+    },
+    "integrations": {
+      "title": "Integrations",
+      "add": "Add",
+      "no_integrations": "No integrations",
+      "connect_message": "Connect Telegram or Discord to receive notifications",
+      "count": "{{count}} integration",
+      "count_other": "{{count}} integrations",
+      "enabled": "{{count}} active",
+      "configure": "Configure"
+    },
+    "recent_notifications": {
+      "title": "Recent notifications",
+      "show_all": "Show all",
+      "no_notifications": "No notifications",
+      "will_appear": "Notifications will appear here after sending"
+    }
+  },
+  "notifications": {
+    "title": "Notification history",
+    "subtitle": "View all sent notifications",
+    "stats": {
+      "all": "All",
+      "successful": "Successful",
+      "errors": "Errors",
+      "filtered": "Filtered"
+    },
+    "filters": {
+      "all": "All",
+      "stream_online": "Stream start",
+      "stream_offline": "Stream end",
+      "title_change": "Title",
+      "category_change": "Category",
+      "reward_redemption": "Rewards",
+      "telegram": "Telegram",
+      "discord": "Discord",
+      "sent": "Sent",
+      "failed": "Errors"
+    },
+    "filters_all_title": "Filters",
+    "not_found": "No notifications found",
+    "try_filters": "Try changing filters",
+    "will_appear": "Notifications will appear here after sending",
+    "refresh": "Refresh",
+    "filters_labels": {
+      "stream_online": "Stream start",
+      "stream_offline": "Stream end",
+      "title_change": "Title change",
+      "category_change": "Category change",
+      "reward_redemption": "Reward activation",
+      "telegram": "Telegram",
+      "discord": "Discord",
+      "chat": "Chat"
+    },
+    "loading": "Loading...",
+    "showing": "Showing {{from}} - {{to}} of {{total}}",
+    "pagination": {
+      "prev": "Previous",
+      "next": "Next"
+    }
+  },
+  "integrations_page": {
+    "title": "Integrations",
+    "subtitle": "Configure where your notifications are sent",
+    "tabs": {
+      "telegram": "Telegram",
+      "discord": "Discord",
+      "bot": "Chat bot"
+    },
+    "telegram": {
+      "no_integrations": "No Telegram integrations",
+      "add": "Add Telegram",
+      "add_button": "Add Telegram",
+      "add_prompt": "Add a Telegram chat or channel to receive notifications",
+      "add_first": "Add a Telegram chat or channel to receive notifications"
+    },
+    "discord": {
+      "invite_bot": "Invite bot to Discord",
+      "loading": "Loading...",
+      "bot_not_configured": "Bot is not configured",
+      "no_integrations": "No Discord integrations",
+      "add": "Add Discord",
+      "add_prompt": "Add a Discord channel to receive notifications"
+    },
+    "card": {
+      "delete_confirm": "Are you sure you want to delete this integration?",
+      "delete_error": "Failed to delete integration",
+      "test_success": "Test message sent!",
+      "test_failed": "Failed to send test message",
+      "test_button_title": "Test",
+      "delete_button_title": "Delete",
+      "status_active": "Active",
+      "status_disabled": "Disabled",
+      "webhook": "Webhook",
+      "settings_header": "Notification settings",
+      "toggle_stream_online": "Stream start",
+      "toggle_stream_offline": "Stream end",
+      "toggle_title_change": "Title change",
+      "toggle_category_change": "Category change",
+      "toggle_reward_redemption": "Reward activation",
+      "calendar_sync": "Calendar sync",
+      "calendar_sync_label": "Sync with Discord Events",
+      "enabled_label": "Enabled"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Configure notifications and message templates"
+  },
+  "telegram": {
+    "logo_alt": "Telegram avatar",
+    "integrations_block": {
+      "title": "Integrations",
+      "subtitle": "Connect Telegram and Discord for simplified account linking and integration management.",
+      "connected_as": "Connected as {{username}}",
+      "connected_id": "Connected (id: {{id}})",
+      "telegram_id": "Telegram ID: {{id}}",
+      "discord_id": "Discord ID: {{id}}",
+      "disconnect": "Disconnect",
+      "loading_bot": "Loading bot info...",
+      "bot_not_configured": "Telegram bot is not configured on the server. You can add a chat manually on the Integrations page.",
+      "connect_prompt": "Click the Telegram button below to connect your account.",
+      "connect_discord_prompt": "Click the Discord button below to connect your account.",
+      "connect_discord": "Link Discord",
+      "disconnect_confirm": "Disconnect Telegram from your profile?",
+      "discord_disconnect_confirm": "Disconnect Discord from your profile?",
+      "unlink_error": "Failed to disconnect {{service}}",
+      "link_error": "Failed to start linking {{service}}. Please try again.",
+      "bot_guide": "Click the Telegram button below to connect your account."
+    },
+    "add_dialog": {
+      "title": "Add Telegram integration",
+      "name_placeholder": "Name (optional)",
+      "name_example": "e.g. My notifications",
+      "chat_type_label": "Chat type",
+      "chat_type": {
+        "private": "Private chat",
+        "group": "Group",
+        "supergroup": "Channel / Supergroup"
+      },
+      "chat_id_label": "Chat ID",
+      "chat_id_example": "e.g. -1001234567890",
+      "group_id_error": "Group ID must be a negative number (e.g. -123456789).",
+      "supergroup_id_error": "Supergroup/channel ID must start with -100 and contain only digits (e.g. -1001234567890).",
+      "bot_loading": "Loading bot info...",
+      "bot_instructions": "Make sure the bot {{bot}} is added to the chat and can send messages.",
+      "link_settings": "Open settings",
+      "cancel": "Cancel",
+      "add": "Add",
+      "private_chat_notice": "For a private chat we will use your Telegram user id: {{id}}.",
+      "private_chat_require_link": "To use a private chat you must link your Telegram — do this in Settings.",
+      "create_error": "Failed to create integration",
+      "admin_requirement": "To add an integration you must be an administrator in this chat and the bot must have permission to send messages."
+    }
+  },
+  "discord": {
+    "logo_alt": "Discord avatar"
+  },
+  "discord": {
+    "add_dialog": {
+      "title": "Add Discord integration",
+      "server_label": "Server *",
+      "loading_servers": "Loading servers...",
+      "failed_servers": "Failed to load shared servers or Discord is not linked.",
+      "link_discord": "Link Discord",
+      "select_server": "Select a server",
+      "channel_label": "Channel *",
+      "select_channel_first": "Select a server first",
+      "loading_channels": "Loading channels...",
+      "no_text_channels": "No text channels found",
+      "webhook_label": "Webhook URL (optional)",
+      "webhook_hint": "Optional: use a webhook for custom name and avatar",
+      "cancel": "Cancel",
+      "add": "Add",
+      "webhook_example": "e.g. https://discord.com/api/webhooks/...",
+      "create_error": "Failed to create integration"
+    },
+    "card": {
+      "delete_confirm": "Are you sure you want to delete this integration?",
+      "delete_error": "Failed to delete integration",
+      "test_success": "Test message sent!",
+      "test_failed": "Failed to send test message",
+      "test_button_title": "Test",
+      "delete_button_title": "Delete",
+      "status_active": "Active",
+      "status_disabled": "Disabled",
+      "webhook": "Webhook",
+      "settings_header": "Notification settings",
+      "toggle_stream_online": "Stream start",
+      "toggle_stream_offline": "Stream end",
+      "toggle_title_change": "Title change",
+      "toggle_category_change": "Category change",
+      "toggle_reward_redemption": "Reward activation",
+      "calendar_sync": "Calendar sync",
+      "calendar_sync_label": "Sync with Discord Events",
+      "enabled_label": "Enabled"
+    }
+  },
+  "message_editor": {
+    "edit": "Edit",
+    "placeholders": "Placeholders:",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saving": "Saving...",
+    "saved": "Saved",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copy_template": "Copy template",
+    "stream_online": "Stream start",
+    "stream_online_desc": "Sent when a stream starts",
+    "stream_offline": "Stream end",
+    "stream_offline_desc": "Sent when a stream ends",
+    "title_change": "Title change",
+    "title_change_desc": "Sent when stream title changes",
+    "category_change": "Category change",
+    "category_change_desc": "Sent when stream category changes",
+    "reward_activation": "Reward activation",
+    "reward_activation_desc": "Sent when a channel point reward is redeemed"
+  },
+  "user_settings": {
+    "templates": "Message templates",
+    "saving_error": "Error saving template",
+    "language": "Language",
+    "language_ru": "Russian",
+    "language_en": "English"
+  },
+  "settings_sharing": {
+    "title": "Access to settings",
+    "description": "You can grant another user access to view or manage your settings.",
+    "tabs": {
+      "outgoing": "Granted by me",
+      "incoming": "Granted to me"
+    },
+    "placeholder": "Search by nick (e.g. ninja)",
+    "clear": "Clear",
+    "can_manage": "Can edit",
+    "add": "Add",
+    "create_error": "Failed to create access",
+    "update_error": "Failed to update access",
+    "delete_error": "Failed to delete access",
+    "none": "No one has access yet.",
+    "none_incoming": "No one has granted you access.",
+    "view": "Open",
+    "full_access": "Full access",
+    "view_only": "View only",
+    "enter_login": "Enter Twitch login",
+    "delete_confirm": "Revoke access from this user?"
+  },
+  "owner_settings": {
+    "access_error": "Could not determine access",
+    "access_error_desc": "An error occurred while checking access to the owner's settings. Try refreshing the page.",
+    "return_to_my_settings": "Return to my settings",
+    "access_denied": "Access denied",
+    "no_access_desc": "You do not have access to this owner's settings ({{owner}}). Ask the owner to grant access via the 'Access to settings' section.",
+    "settings_for": "Settings for {{owner}}",
+    "manage_notice": "You have full management rights for this owner's settings.",
+    "view_notice": "You only have view-only access to this owner's settings.",
+    "my_settings": "My settings",
+    "manage_accesses": "Manage accesses"
+  },
+  "bot_settings": {
+    "title": "Chat bot",
+    "subtitle": "Chat bot settings and behavior",
+    "notice": "Important: enabling/disabling notification types (e.g., 'Stream start', 'Title change', etc.) is done per-integration (Telegram, Discord, etc.). Here you can only edit message templates.",
+    "reward": {
+      "title": "Reward activation",
+      "description": "Sent when a channel point reward is redeemed"
+    }
+  },
+  "auth_callback": {
+    "logging_in": "Signing in...",
+    "please_wait": "Please wait while we verify authentication.",
+    "success": "Signed in!",
+    "redirecting": "Redirecting to dashboard...",
+    "error": "Sign-in error",
+    "error_desc": "An error occurred during authentication.",
+    "try_again": "Try again",
+    "home": "Home"
+  },
+  "telegram_callback": {
+    "processing": "Processing Telegram data...",
+    "insufficient_data": "Insufficient data from Telegram for verification (id, auth_date or hash missing).",
+    "processing_error": "Failed to process Telegram response. Please try again.",
+    "link_error_generic": "Failed to connect Telegram. Please try again.",
+    "rate_limited": "Telegram rate limit exceeded. Please try again later.",
+    "rate_limited_with_retry": "Telegram rate limit exceeded. Try again in {{seconds}} sec.",
+    "failed_connect": "Failed to connect Telegram",
+    "return_to_integrations": "Return to integrations",
+    "retry": "Retry",
+    "success": "Telegram connected successfully",
+    "redirecting": "Redirecting to integrations...",
+    "ready": "Done"
+  },
+  "dialog": {
+    "ok": "OK",
+    "yes": "Yes",
+    "cancel": "Cancel"
+  },
+  "ui": {
+    "loading": "Loading...",
+    "arrow": "→",
+    "pipe": "|"
+  },
+  "status": {
+    "sent": "Sent",
+    "failed": "Error",
+    "pending": "Pending"
+  },
+  "relative": {
+    "just_now": "just now"
+  },
+  "notifications_labels": {
+    "stream_online": "Stream start",
+    "stream_offline": "Stream end",
+    "title_change": "Title change",
+    "category_change": "Category change",
+    "reward_redemption": "Reward activation"
+  }
+}

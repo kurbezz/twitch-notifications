@@ -1,0 +1,24 @@
+# Ignored by ESLint (frontend)
+# Node deps
+node_modules/
+
+# Build / output
+dist/
+build/
+public/
+coverage/
+
+# Husky/git hooks
+.husky/
+
+# Generated/minified/bundled files
+*.min.js
+*.bundle.js
+*.map
+
+# Editor / logs
+.vscode/
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
+tsconfig.tsbuildinfo

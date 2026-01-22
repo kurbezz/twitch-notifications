@@ -1,0 +1,105 @@
+# Root .gitignore for twitch-notifications
+
+# ------------------------------------------------------------------
+# Operating system
+# ------------------------------------------------------------------
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Linux / editor temp files
+*~
+*.swp
+*.swo
+
+# ------------------------------------------------------------------
+# Editor / IDE
+# ------------------------------------------------------------------
+.vscode/
+.idea/
+*.code-workspace
+*.sublime-workspace
+*.sublime-project
+
+# ------------------------------------------------------------------
+# Node / Frontend
+# ------------------------------------------------------------------
+# Node modules (matches any node_modules in subtree)
+node_modules/
+
+# Vite / build outputs
+dist/
+.vite/
+
+# TypeScript incremental build file
+*.tsbuildinfo
+
+# npm / yarn / pnpm logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-debug.log*
+
+# ------------------------------------------------------------------
+# Rust / Backend
+# ------------------------------------------------------------------
+# Build artifacts
+target/
+**/target/
+
+# Keep Cargo.lock tracked for reproducible app builds (don't ignore it)
+
+# ------------------------------------------------------------------
+# Environment / secrets
+# ------------------------------------------------------------------
+# Ignore local env files but not the example file (e.g. .env.example)
+.env
+.env.local
+.env.*.local
+
+# Local docker-compose overrides
+docker-compose.override.yml
+
+# ------------------------------------------------------------------
+# Logs, caches & test output
+# ------------------------------------------------------------------
+logs/
+*.log
+coverage/
+.nyc_output/
+coverage.xml
+
+# npm/yarn/pnpm caches
+.npm/
+.pnpm-store/
+
+# ------------------------------------------------------------------
+# Databases
+# ------------------------------------------------------------------
+# Local SQLite files created during development/testing
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+
+# ------------------------------------------------------------------
+# Misc
+# ------------------------------------------------------------------
+.cache/
+*.tmp
+*.temp
+*.bak
+*.orig
+
+# ------------------------------------------------------------------
+# Notes
+# ------------------------------------------------------------------
+# If a file is already tracked by git, adding it here won't untrack it.
+# Use `git rm --cached <file>` to stop tracking a file you want ignored.
+
+.eslintcache

@@ -1,0 +1,553 @@
+use std::sync::Arc;
+
+use axum::{
+    body::Bytes,
+    extract::State,
+    http::{HeaderMap, StatusCode},
+    routing::post,
+    Router,
+};
+use hmac::{Hmac, Mac};
+use serde::Deserialize;
+use sha2::Sha256;
+
+use crate::db::UserRepository;
+use crate::error::{AppError, AppResult};
+use crate::services::notifications::{
+    CategoryChangeData, NotificationContent, NotificationService, RewardRedemptionData,
+    StreamOfflineData, StreamOnlineData, TitleChangeData,
+};
+use crate::AppState;
+
+type HmacSha256 = Hmac<Sha256>;
+
+const TWITCH_MESSAGE_ID_HEADER: &str = "twitch-eventsub-message-id";
+const TWITCH_MESSAGE_TIMESTAMP_HEADER: &str = "twitch-eventsub-message-timestamp";
+const TWITCH_MESSAGE_SIGNATURE_HEADER: &str = "twitch-eventsub-message-signature";
+const TWITCH_MESSAGE_TYPE_HEADER: &str = "twitch-eventsub-message-type";
+
+// Message types
+const MESSAGE_TYPE_VERIFICATION: &str = "webhook_callback_verification";
+const MESSAGE_TYPE_NOTIFICATION: &str = "notification";
+const MESSAGE_TYPE_REVOCATION: &str = "revocation";
+
+// Subscription types
+const SUB_TYPE_STREAM_ONLINE: &str = "stream.online";
+const SUB_TYPE_STREAM_OFFLINE: &str = "stream.offline";
+const SUB_TYPE_CHANNEL_UPDATE: &str = "channel.update";
+const SUB_TYPE_CHANNEL_POINTS_REDEMPTION: &str =
+    "channel.channel_points_custom_reward_redemption.add";
+
+pub fn router() -> Router<Arc<AppState>> {
+    Router::new().route("/twitch", post(handle_twitch_webhook))
+}
+
+// ============================================================================
+// EventSub Payload Types
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct EventSubPayload {
+    pub subscription: EventSubSubscription,
+    pub challenge: Option<String>,
+    pub event: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EventSubSubscription {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub subscription_type: String,
+    pub status: String,
+}
+
+// Event types
+
+#[derive(Debug, Deserialize)]
+pub struct StreamOnlineEvent {
+    pub broadcaster_user_id: String,
+    pub broadcaster_user_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StreamOfflineEvent {
+    pub broadcaster_user_id: String,
+    pub broadcaster_user_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ChannelUpdateEvent {
+    pub broadcaster_user_id: String,
+    pub broadcaster_user_name: String,
+    pub title: String,
+    pub category_id: String,
+    pub category_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ChannelPointsRedemptionEvent {
+    pub broadcaster_user_id: String,
+    pub broadcaster_user_name: String,
+    pub user_name: String,
+    pub user_input: Option<String>,
+    pub reward: RewardInfo,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RewardInfo {
+    pub title: String,
+    pub cost: i32,
+}
+
+// ============================================================================
+// Stream State Cache (for detecting changes)
+// ============================================================================
+
+use std::collections::HashMap;
+use tokio::sync::RwLock;
+
+#[derive(Debug, Clone)]
+pub struct StreamState {
+    pub is_live: bool,
+    pub title: String,
+    pub category_id: String,
+}
+
+lazy_static::lazy_static! {
+    static ref STREAM_STATE_CACHE: RwLock<HashMap<String, StreamState>> = RwLock::new(HashMap::new());
+}
+
+// ============================================================================
+// Webhook Handler
+// ============================================================================
+
+async fn handle_twitch_webhook(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<(StatusCode, String), AppError> {
+    // Extract headers
+    let message_id = get_header(&headers, TWITCH_MESSAGE_ID_HEADER)?;
+    let timestamp = get_header(&headers, TWITCH_MESSAGE_TIMESTAMP_HEADER)?;
+    let signature = get_header(&headers, TWITCH_MESSAGE_SIGNATURE_HEADER)?;
+    let message_type = get_header(&headers, TWITCH_MESSAGE_TYPE_HEADER)?;
+
+    // Verify signature
+    verify_signature(&state, &message_id, &timestamp, &body, &signature)?;
+
+    // Parse the payload
+    let payload: EventSubPayload = serde_json::from_slice(&body)
+        .map_err(|e| AppError::BadRequest(format!("Invalid payload: {}", e)))?;
+
+    tracing::info!(
+        "Received EventSub message: type={}, subscription_type={}",
+        message_type,
+        payload.subscription.subscription_type
+    );
+
+    // Handle based on message type
+    match message_type.as_str() {
+        MESSAGE_TYPE_VERIFICATION => {
+            // Respond with the challenge for webhook verification
+            let challenge = payload
+                .challenge
+                .ok_or_else(|| AppError::BadRequest("Missing challenge".to_string()))?;
+
+            tracing::info!(
+                "Webhook verification successful for subscription: {}",
+                payload.subscription.id
+            );
+
+            Ok((StatusCode::OK, challenge))
+        }
+        MESSAGE_TYPE_NOTIFICATION => {
+            // Handle the notification
+            handle_notification(&state, &payload).await?;
+            Ok((StatusCode::OK, "OK".to_string()))
+        }
+        MESSAGE_TYPE_REVOCATION => {
+            // Handle subscription revocation
+            tracing::warn!(
+                "Subscription revoked: id={}, type={}, reason={}",
+                payload.subscription.id,
+                payload.subscription.subscription_type,
+                payload.subscription.status
+            );
+            Ok((StatusCode::OK, "OK".to_string()))
+        }
+        _ => {
+            tracing::warn!("Unknown message type: {}", message_type);
+            Ok((StatusCode::OK, "OK".to_string()))
+        }
+    }
+}
+
+// ============================================================================
+// Signature Verification
+// ============================================================================
+
+fn verify_signature(
+    state: &Arc<AppState>,
+    message_id: &str,
+    timestamp: &str,
+    body: &[u8],
+    signature: &str,
+) -> AppResult<()> {
+    // Get the secret from config
+    let secret = &state.config.jwt.secret; // Using JWT secret as webhook secret for simplicity
+
+    // Build the message to sign: message_id + timestamp + body
+    let mut message = Vec::new();
+    message.extend_from_slice(message_id.as_bytes());
+    message.extend_from_slice(timestamp.as_bytes());
+    message.extend_from_slice(body);
+
+    // Create HMAC
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|_| AppError::Internal(anyhow::anyhow!("Failed to create HMAC")))?;
+
+    mac.update(&message);
+
+    // Parse the signature (format: sha256=<hex>)
+    let expected_sig = if let Some(hex_sig) = signature.strip_prefix("sha256=") {
+        hex::decode(hex_sig)
+            .map_err(|_| AppError::BadRequest("Invalid signature format".to_string()))?
+    } else {
+        return Err(AppError::BadRequest("Invalid signature format".to_string()));
+    };
+
+    // Verify
+    mac.verify_slice(&expected_sig)
+        .map_err(|_| AppError::Unauthorized)?;
+
+    // Check timestamp is not too old (within 10 minutes)
+    if let Ok(msg_time) = chrono::DateTime::parse_from_rfc3339(timestamp) {
+        let now = chrono::Utc::now();
+        let diff = now.signed_duration_since(msg_time);
+        if diff.num_minutes().abs() > 10 {
+            return Err(AppError::BadRequest("Message too old".to_string()));
+        }
+    }
+
+    Ok(())
+}
+
+fn get_header(headers: &HeaderMap, name: &str) -> AppResult<String> {
+    headers
+        .get(name)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .ok_or_else(|| AppError::BadRequest(format!("Missing header: {}", name)))
+}
+
+// ============================================================================
+// Notification Handlers
+// ============================================================================
+
+async fn handle_notification(state: &Arc<AppState>, payload: &EventSubPayload) -> AppResult<()> {
+    let event = payload
+        .event
+        .as_ref()
+        .ok_or_else(|| AppError::BadRequest("Missing event data".to_string()))?;
+
+    match payload.subscription.subscription_type.as_str() {
+        SUB_TYPE_STREAM_ONLINE => {
+            let event: StreamOnlineEvent = serde_json::from_value(event.clone())
+                .map_err(|e| AppError::BadRequest(format!("Invalid event data: {}", e)))?;
+
+            handle_stream_online(state, event).await?;
+        }
+        SUB_TYPE_STREAM_OFFLINE => {
+            let event: StreamOfflineEvent = serde_json::from_value(event.clone())
+                .map_err(|e| AppError::BadRequest(format!("Invalid event data: {}", e)))?;
+
+            handle_stream_offline(state, event).await?;
+        }
+        SUB_TYPE_CHANNEL_UPDATE => {
+            let event: ChannelUpdateEvent = serde_json::from_value(event.clone())
+                .map_err(|e| AppError::BadRequest(format!("Invalid event data: {}", e)))?;
+
+            handle_channel_update(state, event).await?;
+        }
+        SUB_TYPE_CHANNEL_POINTS_REDEMPTION => {
+            let event: ChannelPointsRedemptionEvent = serde_json::from_value(event.clone())
+                .map_err(|e| AppError::BadRequest(format!("Invalid event data: {}", e)))?;
+
+            handle_channel_points_redemption(state, event).await?;
+        }
+        _ => {
+            tracing::debug!(
+                "Unhandled subscription type: {}",
+                payload.subscription.subscription_type
+            );
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_stream_online(state: &Arc<AppState>, event: StreamOnlineEvent) -> AppResult<()> {
+    tracing::info!(
+        "Stream online: {} ({})",
+        event.broadcaster_user_name,
+        event.broadcaster_user_id
+    );
+
+    // Update cache
+    {
+        let mut cache = STREAM_STATE_CACHE.write().await;
+        cache.insert(
+            event.broadcaster_user_id.clone(),
+            StreamState {
+                is_live: true,
+                title: String::new(),
+                category_id: String::new(),
+            },
+        );
+    }
+
+    // Find user by Twitch ID
+    let user =
+        match UserRepository::find_by_twitch_id(&state.db, &event.broadcaster_user_id).await? {
+            Some(u) => u,
+            None => {
+                tracing::debug!(
+                    "No user found for broadcaster: {}",
+                    event.broadcaster_user_id
+                );
+                return Ok(());
+            }
+        };
+
+    // Get stream info from Twitch API for additional details
+    let stream = state
+        .twitch
+        .get_stream(&user.twitch_access_token, &event.broadcaster_user_id)
+        .await?;
+
+    let (title, category, thumbnail) = if let Some(s) = stream {
+        (s.title, s.game_name, Some(s.thumbnail_url))
+    } else {
+        ("Stream started!".to_string(), "Unknown".to_string(), None)
+    };
+
+    // Send notifications
+    let notification_service = NotificationService::new(state);
+
+    let data = StreamOnlineData {
+        streamer_name: event.broadcaster_user_name,
+        streamer_avatar: if user.twitch_profile_image_url.is_empty() {
+            None
+        } else {
+            Some(user.twitch_profile_image_url.clone())
+        },
+        title,
+        category,
+        thumbnail_url: thumbnail,
+    };
+
+    let results = notification_service
+        .send_notification(&user.id, NotificationContent::StreamOnline(&data))
+        .await?;
+
+    tracing::info!(
+        "Sent {} stream online notifications for user {}",
+        results.len(),
+        user.id
+    );
+
+    Ok(())
+}
+
+async fn handle_stream_offline(state: &Arc<AppState>, event: StreamOfflineEvent) -> AppResult<()> {
+    tracing::info!(
+        "Stream offline: {} ({})",
+        event.broadcaster_user_name,
+        event.broadcaster_user_id
+    );
+
+    // Update cache
+    {
+        let mut cache = STREAM_STATE_CACHE.write().await;
+        cache.remove(&event.broadcaster_user_id);
+    }
+
+    // Find user by Twitch ID
+    let user =
+        match UserRepository::find_by_twitch_id(&state.db, &event.broadcaster_user_id).await? {
+            Some(u) => u,
+            None => {
+                tracing::debug!(
+                    "No user found for broadcaster: {}",
+                    event.broadcaster_user_id
+                );
+                return Ok(());
+            }
+        };
+
+    // Send offline notifications (if the user has integrations enabled)
+    let notification_service = NotificationService::new(state);
+
+    let data = StreamOfflineData {
+        streamer_name: event.broadcaster_user_name,
+    };
+
+    let results = notification_service
+        .send_notification(&user.id, NotificationContent::StreamOffline(&data))
+        .await?;
+
+    tracing::info!(
+        "Sent {} stream offline notifications for user {}",
+        results.len(),
+        user.id
+    );
+
+    Ok(())
+}
+
+async fn handle_channel_update(state: &Arc<AppState>, event: ChannelUpdateEvent) -> AppResult<()> {
+    tracing::info!(
+        "Channel update: {} - title='{}', category='{}'",
+        event.broadcaster_user_name,
+        event.title,
+        event.category_name
+    );
+
+    // Check what changed
+    let (title_changed, category_changed) = {
+        let mut cache = STREAM_STATE_CACHE.write().await;
+
+        // Extract previous state values before mutating the cache
+        let (prev_is_live, prev_title, prev_category_id) = cache
+            .get(&event.broadcaster_user_id)
+            .map(|state| {
+                (
+                    state.is_live,
+                    state.title.clone(),
+                    state.category_id.clone(),
+                )
+            })
+            .unwrap_or((false, String::new(), String::new()));
+
+        let title_changed = !prev_title.is_empty() && prev_title != event.title;
+        let category_changed =
+            !prev_category_id.is_empty() && prev_category_id != event.category_id;
+
+        // Now we can mutate the cache
+        cache.insert(
+            event.broadcaster_user_id.clone(),
+            StreamState {
+                is_live: prev_is_live,
+                title: event.title.clone(),
+                category_id: event.category_id.clone(),
+            },
+        );
+
+        (title_changed, category_changed)
+    };
+
+    if !title_changed && !category_changed {
+        return Ok(());
+    }
+
+    // Find user by Twitch ID
+    let user =
+        match UserRepository::find_by_twitch_id(&state.db, &event.broadcaster_user_id).await? {
+            Some(u) => u,
+            None => {
+                tracing::debug!(
+                    "No user found for broadcaster: {}",
+                    event.broadcaster_user_id
+                );
+                return Ok(());
+            }
+        };
+
+    let notification_service = NotificationService::new(state);
+
+    // Send title change notification
+    if title_changed {
+        let data = TitleChangeData {
+            streamer_name: event.broadcaster_user_name.clone(),
+            new_title: event.title.clone(),
+        };
+
+        let results = notification_service
+            .send_notification(&user.id, NotificationContent::TitleChange(&data))
+            .await?;
+
+        tracing::info!(
+            "Sent {} title change notifications for user {}",
+            results.len(),
+            user.id
+        );
+    }
+
+    // Send category change notification
+    if category_changed {
+        let data = CategoryChangeData {
+            streamer_name: event.broadcaster_user_name,
+            new_category: event.category_name,
+        };
+
+        let results = notification_service
+            .send_notification(&user.id, NotificationContent::CategoryChange(&data))
+            .await?;
+
+        tracing::info!(
+            "Sent {} category change notifications for user {}",
+            results.len(),
+            user.id
+        );
+    }
+
+    Ok(())
+}
+
+async fn handle_channel_points_redemption(
+    state: &Arc<AppState>,
+    event: ChannelPointsRedemptionEvent,
+) -> AppResult<()> {
+    tracing::info!(
+        "Channel points redemption: {} redeemed '{}' for {} points on {}",
+        event.user_name,
+        event.reward.title,
+        event.reward.cost,
+        event.broadcaster_user_name
+    );
+
+    // Find user by Twitch ID
+    let user =
+        match UserRepository::find_by_twitch_id(&state.db, &event.broadcaster_user_id).await? {
+            Some(u) => u,
+            None => {
+                tracing::debug!(
+                    "No user found for broadcaster: {}",
+                    event.broadcaster_user_id
+                );
+                return Ok(());
+            }
+        };
+
+    let notification_service = NotificationService::new(state);
+
+    let data = RewardRedemptionData {
+        redeemer_name: event.user_name,
+        reward_name: event.reward.title,
+        reward_cost: event.reward.cost,
+        user_input: event.user_input,
+        broadcaster_name: event.broadcaster_user_name,
+    };
+
+    let results = notification_service
+        .send_notification(&user.id, NotificationContent::RewardRedemption(&data))
+        .await?;
+
+    tracing::info!(
+        "Sent {} reward redemption notifications for user {}",
+        results.len(),
+        user.id
+    );
+
+    Ok(())
+}

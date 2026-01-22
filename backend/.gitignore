@@ -1,0 +1,63 @@
+# Backend .gitignore - Rust backend (twitch-notifications/backend)
+#
+# This file ignores common Rust build artifacts, local environment files,
+# and editor / OS noise that should not be committed.
+
+# ---------------------------------------------------------------------
+# Rust build artifacts
+# ---------------------------------------------------------------------
+# Ignore Cargo build output (created by `cargo build`, `cargo test`, etc.)
+target/
+
+# ---------------------------------------------------------------------
+# Environment / secrets
+# ---------------------------------------------------------------------
+# Keep .env.example committed; ignore local .env files that may contain secrets
+.env
+.env.local
+.env.*.local
+
+# ---------------------------------------------------------------------
+# Local databases / runtime files
+# ---------------------------------------------------------------------
+# Local SQLite files created during development/testing
+*.sqlite
+*.sqlite3
+*.db
+
+# ---------------------------------------------------------------------
+# Logs / caches / coverage
+# ---------------------------------------------------------------------
+logs/
+*.log
+coverage/
+.nyc_output/
+.cache/
+
+# ---------------------------------------------------------------------
+# Editor / OS
+# ---------------------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+
+# ---------------------------------------------------------------------
+# Misc
+# ---------------------------------------------------------------------
+*.tmp
+*.temp
+*.bak
+*.orig
+
+# ---------------------------------------------------------------------
+# Notes
+# ---------------------------------------------------------------------
+# - Do not ignore `Cargo.lock` here; it's intentionally tracked for the
+#   application to ensure reproducible builds.
+# - If a file is already tracked by git, adding it to this file won't
+#   untrack it. Use `git rm --cached <file>` to remove tracked files you
+#   want ignored.

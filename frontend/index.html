@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/twitch-icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Twitch Notifications - Get notified about your favorite streamers"
+    />
+    <meta name="theme-color" content="#9146FF" />
+    <title>Twitch Notifications</title>
+
+    <!-- Preconnect to Twitch CDN for profile images -->
+    <link rel="preconnect" href="https://static-cdn.jtvnw.net" />
+
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Twitch Notifications" />
+    <meta
+      property="og:description"
+      content="Get notified about your favorite streamers on Telegram and Discord"
+    />
+    <meta property="og:image" content="/og-image.png" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Twitch Notifications" />
+    <meta
+      name="twitter:description"
+      content="Get notified about your favorite streamers on Telegram and Discord"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Optional runtime config:
+         Replace `%%API_URL%%` in this file at container start (e.g. using sed/envsubst)
+         to set API URL without rebuilding the image.
+         If not replaced or empty, the app will fall back to build-time `VITE_API_URL`
+         or to `window.location.origin`. -->
+    <script>
+      (function () {
+        window.__RUNTIME_CONFIG__ = window.__RUNTIME_CONFIG__ || {};
+        // Placeholder intended to be replaced by your container entrypoint.
+        // Example replacement command in Docker entrypoint:
+        //   sed -i "s|%%API_URL%%|$API_URL|g" /usr/share/nginx/html/index.html
+        var __API_PLACEHOLDER__ = '%%API_URL%%';
+        if (__API_PLACEHOLDER__ && __API_PLACEHOLDER__ !== '%%API_URL%%') {
+          window.__RUNTIME_CONFIG__.API_URL = __API_PLACEHOLDER__;
+        }
+        // Back-compat: also honor window.__API_URL__ if provided
+        if (!window.__RUNTIME_CONFIG__.API_URL && window.__API_URL__) {
+          window.__RUNTIME_CONFIG__.API_URL = window.__API_URL__;
+        }
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
