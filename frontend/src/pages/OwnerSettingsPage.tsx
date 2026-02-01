@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, Navigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { settingsApi } from '@/lib/api';
@@ -17,6 +18,7 @@ import { Button } from '@/components/ui/button';
  * - If access: show settings block (message templates) and integrations block (Telegram/Discord).
  */
 export function OwnerSettingsPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const params = useParams();
   const ownerId = params.userId;

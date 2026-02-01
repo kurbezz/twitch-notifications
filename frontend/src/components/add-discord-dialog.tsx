@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useForm as tanUseForm } from '@tanstack/react-form';
+import { useForm } from '@/lib/useForm';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { discordApi, authApi } from '@/lib/api';
 import type { DiscordChannel } from '@/lib/api';
@@ -19,7 +19,7 @@ type Props = {
 };
 
 export default function AddDiscordDialog({ open, onClose, ownerId }: Props) {
-  const form = tanUseForm<{
+  const form = useForm<{
     guildId: string;
     guildName: string;
     channelId: string;

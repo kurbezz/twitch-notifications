@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useForm as tanUseForm } from '@tanstack/react-form';
+import { useForm } from '@/lib/useForm';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { settingsApi, usersApi } from '@/lib/api';
 import type { OutgoingShare, IncomingShare, User } from '@/lib/api';
@@ -34,7 +34,7 @@ export default function SettingsSharing() {
   const [activeTab, setActiveTab] = useState<'outgoing' | 'incoming'>('outgoing');
 
   // Form state for creating a share (search by nickname + select)
-  const { setValue, getValues, reset } = tanUseForm<{ searchTerm: string; canManage: boolean }>({
+  const { setValue, getValues, reset } = useForm<{ searchTerm: string; canManage: boolean }>({
     defaultValues: { searchTerm: '', canManage: false },
   });
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -136,7 +136,8 @@ export default function SettingsSharing() {
     }
     setIsSubmitting(true);
     try {
-      await createMutation.mutateAsync({ twitch_login: login, can_manage: canManage });
+      const values = getValues();
+      await createMutation.mutateAsync({ twitch_login: login, can_manage: values.canManage });
     } finally {
       setIsSubmitting(false);
     }

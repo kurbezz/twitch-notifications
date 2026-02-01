@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useForm as tanUseForm } from '@tanstack/react-form';
+import { useForm } from '@/lib/useForm';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { telegramApi, TelegramBotInfo } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,7 @@ type Props = {
 };
 
 export default function AddTelegramDialog({ open, onClose, ownerId }: Props) {
-  const form = tanUseForm<{ chatId: string; chatTitle: string; chatType: string }>({
+  const form = useForm<{ chatId: string; chatTitle: string; chatType: string }>({
     defaultValues: { chatId: '', chatTitle: '', chatType: 'private' },
   });
   const setValue = form.setValue?.bind(form) ?? (() => {});
