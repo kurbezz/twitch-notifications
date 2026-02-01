@@ -1,7 +1,7 @@
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { MessageSquare, Bell, Zap, Shield, ArrowRight } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 
 // Twitch icon component
 function TwitchIcon({ className }: { className?: string }) {
@@ -85,15 +85,15 @@ export function LoginPage() {
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
 
-            <p
-              className="text-xs text-muted-foreground"
-              dangerouslySetInnerHTML={{
-                __html: t('login.accept_terms', {
-                  terms: `<a href="/terms" class="underline hover:text-foreground">${t('login.terms_text')}</a>`,
-                  privacy: `<a href="/privacy" class="underline hover:text-foreground">${t('login.privacy_text')}</a>`,
-                }),
-              }}
-            />
+            <p className="text-xs text-muted-foreground">
+              <Trans
+                i18nKey="login.accept_terms"
+                components={[
+                  <a href="/terms" className="underline hover:text-foreground" key="terms" />,
+                  <a href="/privacy" className="underline hover:text-foreground" key="privacy" />,
+                ]}
+              />
+            </p>
           </div>
         </div>
 

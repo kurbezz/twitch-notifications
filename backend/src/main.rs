@@ -5,6 +5,7 @@ use std::time::Duration;
 use axum::{routing::get, Router};
 use tokio::sync::RwLock;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
+mod middleware;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use axum::body::Body;
@@ -266,6 +267,8 @@ async fn main() -> anyhow::Result<()> {
         )
         // Add shared state
         .with_state(app_state.clone())
+        // CSP middleware: set Content-Security-Policy headers
+        .layer(axum::middleware::from_fn(middleware::csp::csp_middleware))
         // Add middleware
         .layer(TraceLayer::new_for_http())
         .layer(

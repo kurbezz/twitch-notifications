@@ -17,6 +17,7 @@ use chrono::{Duration, Utc};
 use http;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -263,22 +264,37 @@ async fn callback(
     let expires_at = (Utc::now() + Duration::hours(state.config.jwt.expiration_hours)).timestamp();
 
     // Include redirect_to in the fragment so AuthCallbackPage knows where to go after token extraction
-    let final_redirect = oauth_state.redirect_to.as_deref().unwrap_or("/dashboard");
-    let redirect_with_fragment =
-        if final_redirect.contains("://") || final_redirect.starts_with('/') {
-            format!(
-                "{}#access_token={}&token_type=Bearer&expires_at={}&redirect_to={}",
-                callback_url,
-                token_enc,
-                expires_at,
-                urlencoding::encode(final_redirect)
-            )
-        } else {
-            format!(
-                "{}#access_token={}&token_type=Bearer&expires_at={}&redirect_to=%2F{}",
-                callback_url, token_enc, expires_at, final_redirect
-            )
-        };
+    // Validate redirect_to to prevent open-redirects. Accept only:
+    //  - absolute URLs with the same origin as configured frontend_url
+    //  - relative paths starting with a single '/'
+    fn is_safe_redirect(redirect: &str, frontend_base: &str) -> bool {
+        // allow single-segment relative paths like '/dashboard' but not protocol-relative '//' URLs
+        if redirect.starts_with('/') && !redirect.starts_with("//") {
+            return true;
+        }
+        if let Ok(u) = Url::parse(redirect) {
+            if let Ok(front) = Url::parse(frontend_base) {
+                return u.origin() == front.origin();
+            }
+        }
+        false
+    }
+
+    let raw_redirect = oauth_state.redirect_to.as_deref().unwrap_or("/dashboard");
+    let safe_redirect = if is_safe_redirect(raw_redirect, &frontend_base) {
+        raw_redirect.to_string()
+    } else {
+        tracing::warn!("Rejected unsafe redirect_to value: {}", raw_redirect);
+        "/dashboard".to_string()
+    };
+
+    let redirect_with_fragment = format!(
+        "{}#access_token={}&token_type=Bearer&expires_at={}&redirect_to={}",
+        callback_url,
+        token_enc,
+        expires_at,
+        urlencoding::encode(&safe_redirect)
+    );
 
     tracing::debug!(
         "Redirecting to auth/callback at: {} with token expiring at: {}, final redirect: {}",
