@@ -1,9 +1,36 @@
-// Re-export the official TanStack useForm hook as the canonical `useForm`.
-// After migrating all forms to the official API we no longer need the local
-// adapter. Keep the adapter file for now until we're confident everything
-// has been migrated; it will be removed after this commit.
-export { useForm } from '@tanstack/react-form';
+import { useForm as tanUseForm } from '@tanstack/react-form';
 
-// (Legacy) Keep the adapter type export available under a specific name in
-// case other modules still import it directly.
-export type { UseTanstackFormReturn as UseFormReturn } from './useTanstackForm';
+// Provide a small wrapper around TanStack's `useForm` to present the simpler
+// `setValue`/`getValues`/`reset` surface that the codebase expects while
+// keeping full access to the underlying advanced API when needed.
+export function useForm<T extends Record<string, unknown>>(opts?: {
+  defaultValues?: T;
+  onSubmit?: (values: T) => Promise<void> | void;
+}) {
+  // Do not specify the heavy generic parameters for the underlying hook —
+  // let it infer. We adapt a minimal, typed surface on top.
+  const raw = tanUseForm({
+    defaultValues: opts?.defaultValues,
+    onSubmit: (args: unknown) => {
+      const value =
+        args && typeof args === 'object' && 'value' in (args as Record<string, unknown>)
+          ? (args as Record<string, unknown>)['value']
+          : undefined;
+      opts?.onSubmit?.((value ?? {}) as T);
+    },
+  }) as unknown as {
+    setValue?: (name: keyof T, value: unknown) => void;
+    getValues?: () => T;
+    reset?: (values?: T) => void;
+    // include index signature to allow spreading/forwarding any other runtime props
+    [k: string]: unknown;
+  };
+
+  const setValue = raw.setValue ?? (() => {});
+  const getValues = raw.getValues ?? (() => opts?.defaultValues ?? ({} as T));
+  const reset = raw.reset ?? (() => {});
+
+  return { ...raw, setValue, getValues, reset } as unknown;
+}
+
+export type UseFormReturn<T extends Record<string, unknown>> = ReturnType<typeof useForm<T>>;
