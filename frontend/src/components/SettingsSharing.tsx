@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useForm as tanUseForm } from '@tanstack/react-form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { settingsApi, usersApi } from '@/lib/api';
 import type { OutgoingShare, IncomingShare, User } from '@/lib/api';
@@ -33,17 +34,19 @@ export default function SettingsSharing() {
   const [activeTab, setActiveTab] = useState<'outgoing' | 'incoming'>('outgoing');
 
   // Form state for creating a share (search by nickname + select)
-  const [searchTerm, setSearchTerm] = useState('');
+  const { setValue, getValues, reset } = tanUseForm<{ searchTerm: string; canManage: boolean }>({
+    defaultValues: { searchTerm: '', canManage: false },
+  });
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [canManage, setCanManage] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Debounce the search input
-  const [debouncedSearch, setDebouncedSearch] = useState(searchTerm);
+  // Debounce the search input (reads from form state)
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   useEffect(() => {
-    const id = setTimeout(() => setDebouncedSearch(searchTerm), 300);
+    const id = setTimeout(() => setDebouncedSearch(getValues().searchTerm ?? ''), 300);
     return () => clearTimeout(id);
-  }, [searchTerm]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getValues().searchTerm]);
 
   // Query for user search results (enabled when debounced search >= 2 chars)
   const { data: userSearchResults, isLoading: userSearchLoading } = useQuery<User[]>({
@@ -82,9 +85,8 @@ export default function SettingsSharing() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings', 'shares', 'outgoing'] });
       queryClient.invalidateQueries({ queryKey: ['settings', 'shares', 'incoming'] });
-      setSearchTerm('');
+      reset();
       setSelectedUser(null);
-      setCanManage(false);
     },
     onError: (err: unknown) => {
       const msg = getErrorMessage(err, t('settings_sharing.create_error'));
@@ -126,7 +128,8 @@ export default function SettingsSharing() {
 
   const handleCreateShare = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    const login = selectedUser ? selectedUser.twitch_login : searchTerm.trim();
+    const values = getValues();
+    const login = selectedUser ? selectedUser.twitch_login : (values.searchTerm ?? '').trim();
     if (!login) {
       await showAlert(t('settings_sharing.enter_login'));
       return;
@@ -186,9 +189,9 @@ export default function SettingsSharing() {
             <div className="relative w-full">
               <input
                 type="text"
-                value={searchTerm}
+                value={getValues().searchTerm ?? ''}
                 onChange={(e) => {
-                  setSearchTerm(e.target.value);
+                  setValue('searchTerm', e.target.value);
                   setSelectedUser(null);
                 }}
                 placeholder={t('settings_sharing.placeholder')}
@@ -207,7 +210,7 @@ export default function SettingsSharing() {
                     type="button"
                     onClick={() => {
                       setSelectedUser(null);
-                      setSearchTerm('');
+                      setValue('searchTerm', '');
                     }}
                     className="text-sm text-red-500 hover:underline"
                   >
@@ -229,7 +232,7 @@ export default function SettingsSharing() {
                         type="button"
                         onClick={() => {
                           setSelectedUser(u);
-                          setSearchTerm(u.twitch_login);
+                          setValue('searchTerm', u.twitch_login);
                         }}
                         className="w-full text-left px-3 py-2 hover:bg-muted/20"
                       >
@@ -249,8 +252,8 @@ export default function SettingsSharing() {
             <label className="flex items-center gap-2 mt-1">
               <input
                 type="checkbox"
-                checked={canManage}
-                onChange={(e) => setCanManage(e.target.checked)}
+                checked={getValues().canManage ?? false}
+                onChange={(e) => setValue('canManage', e.target.checked)}
                 className="h-4 w-4"
               />
               <span className="text-sm">{t('settings_sharing.can_manage')}</span>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useForm as tanUseForm } from '@tanstack/react-form';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { telegramApi, TelegramBotInfo } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -17,9 +18,17 @@ type Props = {
 };
 
 export default function AddTelegramDialog({ open, onClose, ownerId }: Props) {
-  const [chatId, setChatId] = useState('');
-  const [chatTitle, setChatTitle] = useState('');
-  const [chatType, setChatType] = useState('private');
+  const form = tanUseForm<{ chatId: string; chatTitle: string; chatType: string }>({
+    defaultValues: { chatId: '', chatTitle: '', chatType: 'private' },
+  });
+  const setValue = form.setValue?.bind(form) ?? (() => {});
+  const getValues =
+    form.getValues?.bind(form) ??
+    (() => ({}) as { chatId: string; chatTitle: string; chatType: string });
+  const reset = form.reset?.bind(form) ?? (() => {});
+  const chatId = getValues().chatId ?? '';
+  const chatTitle = getValues().chatTitle ?? '';
+  const chatType = getValues().chatType ?? 'private';
   const [isSubmitting, setIsSubmitting] = useState(false);
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -63,9 +72,7 @@ export default function AddTelegramDialog({ open, onClose, ownerId }: Props) {
       }
 
       onClose();
-      setChatId('');
-      setChatTitle('');
-      setChatType('private');
+      reset({ chatId: '', chatTitle: '', chatType: 'private' });
     } catch (err: unknown) {
       let message = t('telegram.add_dialog.create_error');
       if (typeof err === 'string') {
@@ -145,7 +152,7 @@ export default function AddTelegramDialog({ open, onClose, ownerId }: Props) {
             <input
               type="text"
               value={chatTitle}
-              onChange={(e) => setChatTitle(e.target.value)}
+              onChange={(e) => setValue('chatTitle', e.target.value)}
               placeholder={t('telegram.add_dialog.name_example')}
               className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
             />
@@ -156,7 +163,7 @@ export default function AddTelegramDialog({ open, onClose, ownerId }: Props) {
             </label>
             <select
               value={chatType}
-              onChange={(e) => setChatType(e.target.value)}
+              onChange={(e) => setValue('chatType', e.target.value)}
               className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
             >
               <option value="private">{t('telegram.add_dialog.chat_type.private')}</option>
@@ -172,7 +179,7 @@ export default function AddTelegramDialog({ open, onClose, ownerId }: Props) {
               type="text"
               value={chatType === 'private' ? (user?.telegram_user_id ?? '') : chatId}
               onChange={(e) => {
-                if (chatType !== 'private') setChatId(e.target.value);
+                if (chatType !== 'private') setValue('chatId', e.target.value);
               }}
               placeholder={t('telegram.add_dialog.chat_id_example')}
               className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"

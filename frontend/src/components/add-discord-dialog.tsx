@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useForm as tanUseForm } from '@tanstack/react-form';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { discordApi, authApi } from '@/lib/api';
 import type { DiscordChannel } from '@/lib/api';
@@ -18,10 +19,23 @@ type Props = {
 };
 
 export default function AddDiscordDialog({ open, onClose, ownerId }: Props) {
-  const [guildId, setGuildId] = useState('');
-  const [guildName, setGuildName] = useState('');
-  const [channelId, setChannelId] = useState('');
-  const [webhookUrl, setWebhookUrl] = useState('');
+  const form = tanUseForm<{
+    guildId: string;
+    guildName: string;
+    channelId: string;
+    webhookUrl: string;
+  }>({
+    defaultValues: { guildId: '', guildName: '', channelId: '', webhookUrl: '' },
+  });
+  const setValue = form.setValue?.bind(form) ?? (() => {});
+  const getValues =
+    form.getValues?.bind(form) ??
+    (() => ({}) as { guildId: string; guildName: string; channelId: string; webhookUrl: string });
+  const reset = form.reset?.bind(form) ?? (() => {});
+  const guildId = getValues().guildId ?? '';
+  const guildName = getValues().guildName ?? '';
+  const channelId = getValues().channelId ?? '';
+  const webhookUrl = getValues().webhookUrl ?? '';
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const queryClient = useQueryClient();
@@ -80,10 +94,7 @@ export default function AddDiscordDialog({ open, onClose, ownerId }: Props) {
       if (ownerId) queryClient.invalidateQueries({ queryKey: ['discord-integrations', ownerId] });
 
       onClose();
-      setGuildId('');
-      setGuildName('');
-      setChannelId('');
-      setWebhookUrl('');
+      reset({ guildId: '', guildName: '', channelId: '', webhookUrl: '' });
       // clear any previous error on success
       setErrorMessage(null);
     } catch (err: unknown) {
@@ -157,10 +168,10 @@ export default function AddDiscordDialog({ open, onClose, ownerId }: Props) {
                 value={guildId}
                 onChange={(e) => {
                   const selected = sharedGuilds.find((g) => g.id === e.target.value);
-                  setGuildId(e.target.value);
-                  setGuildName(selected?.name || '');
+                  setValue('guildId', e.target.value);
+                  setValue('guildName', selected?.name || '');
                   // reset channel selection when guild changes
-                  setChannelId('');
+                  setValue('channelId', '');
                 }}
                 className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
                 required
@@ -184,7 +195,7 @@ export default function AddDiscordDialog({ open, onClose, ownerId }: Props) {
 
             <select
               value={channelId}
-              onChange={(e) => setChannelId(e.target.value)}
+              onChange={(e) => setValue('channelId', e.target.value)}
               className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
               required
               disabled={!guildId || isLoadingChannels || !(channels && channels.length > 0)}
@@ -215,7 +226,7 @@ export default function AddDiscordDialog({ open, onClose, ownerId }: Props) {
             <input
               type="url"
               value={webhookUrl}
-              onChange={(e) => setWebhookUrl(e.target.value)}
+              onChange={(e) => setValue('webhookUrl', e.target.value)}
               placeholder={t('discord.add_dialog.webhook_example')}
               className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
             />
