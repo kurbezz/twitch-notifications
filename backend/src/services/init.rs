@@ -39,20 +39,48 @@ pub async fn init_db(config: &Config) -> Result<sqlx::SqlitePool> {
     let db_url = &config.database.url;
     tracing::info!("Connecting to database: {}", redact_db_url(db_url));
 
-    if let Some(parent) = Path::new(db_url.strip_prefix("sqlite://").unwrap_or(db_url)).parent() {
+    // Extract the file path from the database URL
+    let db_path = db_url.strip_prefix("sqlite://").unwrap_or(db_url);
+    let db_file_path = Path::new(db_path);
+
+    // Create parent directory if it doesn't exist
+    if let Some(parent) = db_file_path.parent() {
         if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).ok();
+            std::fs::create_dir_all(parent).map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to create database directory {}: {}",
+                    parent.display(),
+                    e
+                )
+            })?;
+            tracing::info!(
+                "Database directory created or already exists: {}",
+                parent.display()
+            );
         }
     }
 
     let connect_options = sqlx::sqlite::SqliteConnectOptions::new()
-        .filename(db_url.strip_prefix("sqlite://").unwrap_or(db_url))
+        .filename(db_path)
         .create_if_missing(true);
 
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(config.database.max_connections)
         .connect_with(connect_options)
         .await?;
+
+    // Log successful database file creation or connection
+    if db_file_path.exists() {
+        tracing::info!(
+            "Successfully connected to database file: {}",
+            db_file_path.display()
+        );
+    } else {
+        tracing::info!(
+            "Database file created successfully: {}",
+            db_file_path.display()
+        );
+    }
 
     tracing::info!("Running database migrations");
     // Keep the same path as before (relative to crate root)
