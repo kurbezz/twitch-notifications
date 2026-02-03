@@ -137,6 +137,8 @@ jobs:
 
       - name: Setup database for SQLx compile-time checks
         working-directory: ./backend
+        env:
+          DATABASE_URL: sqlite://app.db
         run: |
           mkdir -p data
           sqlx db create
