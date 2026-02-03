@@ -91,7 +91,10 @@ describe('useWatch', () => {
       } else if (typeof typedRef?.setValue === 'function') {
         typedRef.setValue('a', 'baz');
       } else if (typeof typedRef?.setFieldState === 'function') {
-        typedRef.setFieldState('a', (s: unknown) => ({ ...s, value: 'baz' }));
+        typedRef.setFieldState('a', (s: unknown) => ({
+          ...(s as Record<string, unknown>),
+          value: 'baz',
+        }));
       }
     });
     console.log(
