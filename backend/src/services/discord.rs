@@ -292,6 +292,7 @@ impl DiscordService {
         } else {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
+            tracing::warn!("Discord membership check failed: status={} body={}", status, error_text);
             Err(AppError::Discord(format!(
                 "Discord API error ({}): {}",
                 status, error_text
@@ -345,17 +346,20 @@ impl DiscordService {
             .map_err(|e| AppError::Discord(format!("Failed to get guild roles: {}", e)))?;
 
         if response.status().is_success() {
-            response
-                .json()
-                .await
-                .map_err(|e| AppError::Discord(format!("Failed to parse roles response: {}", e)))
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            match serde_json::from_str::<Vec<DiscordRole>>(&body) {
+                Ok(r) => Ok(r),
+                Err(e) => {
+                    tracing::warn!("Failed to parse roles response for guild {}: {} -- body: {}", guild_id, e, body);
+                    Err(AppError::Discord(format!("Failed to parse roles response: {}", e)))
+                }
+            }
         } else {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            Err(AppError::Discord(format!(
-                "Discord API error ({}): {}",
-                status, error_text
-            )))
+            tracing::warn!("Discord get_guild_roles failed: status={} body={}", status, error_text);
+            Err(AppError::Discord(format!("Discord API error ({}): {}", status, error_text)))
         }
     }
 
@@ -376,20 +380,21 @@ impl DiscordService {
             .map_err(|e| AppError::Discord(format!("Failed to get guild member: {}", e)))?;
 
         if response.status().is_success() {
-            // We only deserialize roles here; other fields are ignored
-            response
-                .json()
-                .await
-                .map_err(|e| AppError::Discord(format!("Failed to parse member response: {}", e)))
+            let body = response.text().await.unwrap_or_default();
+            match serde_json::from_str::<DiscordMember>(&body) {
+                Ok(m) => Ok(m),
+                Err(e) => {
+                    tracing::warn!("Failed to parse guild member response for guild {} user {}: {} -- body: {}", guild_id, user_id, e, body);
+                    Err(AppError::Discord(format!("Failed to parse member response: {}", e)))
+                }
+            }
         } else if response.status() == reqwest::StatusCode::NOT_FOUND {
             Err(AppError::NotFound("Member not found".to_string()))
         } else {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            Err(AppError::Discord(format!(
-                "Discord API error ({}): {}",
-                status, error_text
-            )))
+            tracing::warn!("Discord get_guild_member failed: status={} body={}", status, error_text);
+            Err(AppError::Discord(format!("Discord API error ({}): {}", status, error_text)))
         }
     }
 
