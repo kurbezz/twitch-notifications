@@ -403,13 +403,19 @@ impl DiscordService {
         // Try to fetch member; if not found or inaccessible, treat as no permissions.
         let member = match self.get_guild_member(guild_id, user_id).await {
             Ok(m) => m,
-            Err(_) => return Ok(false),
+            Err(e) => {
+                tracing::warn!("Failed to fetch guild member {} for guild {}: {:?}", user_id, guild_id, e);
+                return Ok(false);
+            }
         };
 
         // Fetch roles for guild
         let roles = match self.get_guild_roles(guild_id).await {
             Ok(r) => r,
-            Err(_) => return Ok(false),
+            Err(e) => {
+                tracing::warn!("Failed to fetch roles for guild {}: {:?}", guild_id, e);
+                return Ok(false);
+            }
         };
 
         // Compute accumulated permissions from member roles
@@ -421,12 +427,15 @@ impl DiscordService {
         }
 
         // If owner, allow
-        if let Ok(guild_info) = self.get_guild(guild_id).await {
-            if let Some(owner_id) = guild_info.owner_id {
-                if owner_id == user_id {
-                    return Ok(true);
+        match self.get_guild(guild_id).await {
+            Ok(guild_info) => {
+                if let Some(owner_id) = guild_info.owner_id {
+                    if owner_id == user_id {
+                        return Ok(true);
+                    }
                 }
             }
+            Err(e) => tracing::warn!("Failed to fetch guild info for {}: {:?}", guild_id, e),
         }
 
         // Permission bits: ADMINISTRATOR (1 << 3), MANAGE_GUILD (1 << 5)
