@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE synced_calendar_events\n            SET discord_event_id = ?,\n                last_synced_at = ?,\n                updated_at = ?\n            WHERE id = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "a01a4d7d4ad01de8f6606de7ea06454e7f2e4463c8f388b65a08e8dfc00b71c5"
+}

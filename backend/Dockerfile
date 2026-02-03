@@ -12,6 +12,9 @@ RUN apt-get update && apt-get install -y \
 # Copy manifests
 COPY Cargo.toml Cargo.lock* ./
 
+# Copy .sqlx cache for offline mode compilation
+COPY .sqlx ./.sqlx
+
 # Create a dummy main.rs to build dependencies
 RUN mkdir -p src && \
     echo "fn main() {}" > src/main.rs
@@ -26,8 +29,8 @@ COPY migrations ./migrations
 # Touch main.rs to ensure it gets rebuilt
 RUN touch src/main.rs
 
-# Build the application
-RUN cargo build --release
+# Build the application with SQLx offline mode
+RUN SQLX_OFFLINE=true cargo build --release
 
 # Runtime stage
 FROM debian:bookworm-slim

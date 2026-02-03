@@ -1,0 +1,92 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                id as \"id!: String\",\n                user_id as \"user_id!: String\",\n                telegram_chat_id as \"telegram_chat_id!: String\",\n                telegram_chat_title as \"telegram_chat_title?: String\",\n                telegram_chat_type as \"telegram_chat_type?: String\",\n                is_enabled as \"is_enabled!: bool\",\n                notify_stream_online as \"notify_stream_online!: bool\",\n                notify_stream_offline as \"notify_stream_offline!: bool\",\n                notify_title_change as \"notify_title_change!: bool\",\n                notify_category_change as \"notify_category_change!: bool\",\n                notify_reward_redemption as \"notify_reward_redemption!: bool\",\n                created_at as \"created_at!: chrono::NaiveDateTime\",\n                updated_at as \"updated_at!: chrono::NaiveDateTime\"\n            FROM telegram_integrations\n            WHERE user_id = ?\n            ORDER BY created_at DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "user_id!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "telegram_chat_id!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "telegram_chat_title?: String",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "telegram_chat_type?: String",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_enabled!: bool",
+        "ordinal": 5,
+        "type_info": "Bool"
+      },
+      {
+        "name": "notify_stream_online!: bool",
+        "ordinal": 6,
+        "type_info": "Bool"
+      },
+      {
+        "name": "notify_stream_offline!: bool",
+        "ordinal": 7,
+        "type_info": "Bool"
+      },
+      {
+        "name": "notify_title_change!: bool",
+        "ordinal": 8,
+        "type_info": "Bool"
+      },
+      {
+        "name": "notify_category_change!: bool",
+        "ordinal": 9,
+        "type_info": "Bool"
+      },
+      {
+        "name": "notify_reward_redemption!: bool",
+        "ordinal": 10,
+        "type_info": "Bool"
+      },
+      {
+        "name": "created_at!: chrono::NaiveDateTime",
+        "ordinal": 11,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "updated_at!: chrono::NaiveDateTime",
+        "ordinal": 12,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "194df6e28a171a725456e9c59f7b19ebf971d2295931fced30b85f76cf314e43"
+}

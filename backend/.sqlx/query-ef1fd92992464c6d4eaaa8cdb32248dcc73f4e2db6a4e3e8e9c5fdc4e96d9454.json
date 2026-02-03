@@ -1,0 +1,92 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                id as \"id!: String\",\n                user_id as \"user_id!: String\",\n                twitch_segment_id as \"twitch_segment_id!: String\",\n                discord_integration_id as \"discord_integration_id?: String\",\n                discord_event_id as \"discord_event_id?: String\",\n                title as \"title!: String\",\n                start_time as \"start_time!: chrono::NaiveDateTime\",\n                end_time as \"end_time?: chrono::NaiveDateTime\",\n                category_name as \"category_name?: String\",\n                is_recurring as \"is_recurring!: bool\",\n                last_synced_at as \"last_synced_at!: chrono::NaiveDateTime\",\n                created_at as \"created_at!: chrono::NaiveDateTime\",\n                updated_at as \"updated_at!: chrono::NaiveDateTime\"\n            FROM synced_calendar_events\n            WHERE twitch_segment_id = ? AND discord_integration_id = ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "user_id!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "twitch_segment_id!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "discord_integration_id?: String",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "discord_event_id?: String",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "title!: String",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "start_time!: chrono::NaiveDateTime",
+        "ordinal": 6,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "end_time?: chrono::NaiveDateTime",
+        "ordinal": 7,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "category_name?: String",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_recurring!: bool",
+        "ordinal": 9,
+        "type_info": "Bool"
+      },
+      {
+        "name": "last_synced_at!: chrono::NaiveDateTime",
+        "ordinal": 10,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "created_at!: chrono::NaiveDateTime",
+        "ordinal": 11,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "updated_at!: chrono::NaiveDateTime",
+        "ordinal": 12,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ef1fd92992464c6d4eaaa8cdb32248dcc73f4e2db6a4e3e8e9c5fdc4e96d9454"
+}

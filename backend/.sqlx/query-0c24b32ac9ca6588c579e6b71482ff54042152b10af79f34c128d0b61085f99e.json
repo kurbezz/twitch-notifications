@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO settings_shares (\n                id, owner_user_id, grantee_user_id, can_manage, created_at, updated_at\n            ) VALUES (?, ?, ?, ?, ?, ?)\n            RETURNING\n                id as \"id!: String\",\n                owner_user_id as \"owner_user_id!: String\",\n                grantee_user_id as \"grantee_user_id!: String\",\n                can_manage as \"can_manage!: bool\",\n                created_at as \"created_at!: chrono::NaiveDateTime\",\n                updated_at as \"updated_at!: chrono::NaiveDateTime\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "owner_user_id!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "grantee_user_id!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "can_manage!: bool",
+        "ordinal": 3,
+        "type_info": "Bool"
+      },
+      {
+        "name": "created_at!: chrono::NaiveDateTime",
+        "ordinal": 4,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "updated_at!: chrono::NaiveDateTime",
+        "ordinal": 5,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0c24b32ac9ca6588c579e6b71482ff54042152b10af79f34c128d0b61085f99e"
+}

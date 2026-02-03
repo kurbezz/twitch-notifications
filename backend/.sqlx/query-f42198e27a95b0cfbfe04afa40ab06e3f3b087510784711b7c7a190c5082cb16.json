@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT 1 as \"exists!: i64\"\n            FROM telegram_integrations\n            WHERE telegram_chat_id = ? AND user_id = ?\n            LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "exists!: i64",
+        "ordinal": 0,
+        "type_info": "Int"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f42198e27a95b0cfbfe04afa40ab06e3f3b087510784711b7c7a190c5082cb16"
+}

@@ -1,0 +1,92 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO synced_calendar_events (\n                id,\n                user_id,\n                twitch_segment_id,\n                discord_integration_id,\n                discord_event_id,\n                title,\n                start_time,\n                end_time,\n                category_name,\n                is_recurring,\n                last_synced_at,\n                created_at,\n                updated_at\n            )\n            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n            ON CONFLICT(twitch_segment_id, discord_integration_id) DO UPDATE SET\n                title = excluded.title,\n                start_time = excluded.start_time,\n                end_time = excluded.end_time,\n                category_name = excluded.category_name,\n                is_recurring = excluded.is_recurring,\n                last_synced_at = excluded.last_synced_at,\n                updated_at = excluded.updated_at\n            RETURNING\n                id as \"id!: String\",\n                user_id as \"user_id!: String\",\n                twitch_segment_id as \"twitch_segment_id!: String\",\n                discord_integration_id as \"discord_integration_id?: String\",\n                discord_event_id as \"discord_event_id?: String\",\n                title as \"title!: String\",\n                start_time as \"start_time!: chrono::NaiveDateTime\",\n                end_time as \"end_time?: chrono::NaiveDateTime\",\n                category_name as \"category_name?: String\",\n                is_recurring as \"is_recurring!: bool\",\n                last_synced_at as \"last_synced_at!: chrono::NaiveDateTime\",\n                created_at as \"created_at!: chrono::NaiveDateTime\",\n                updated_at as \"updated_at!: chrono::NaiveDateTime\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "user_id!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "twitch_segment_id!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "discord_integration_id?: String",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "discord_event_id?: String",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "title!: String",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "start_time!: chrono::NaiveDateTime",
+        "ordinal": 6,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "end_time?: chrono::NaiveDateTime",
+        "ordinal": 7,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "category_name?: String",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_recurring!: bool",
+        "ordinal": 9,
+        "type_info": "Bool"
+      },
+      {
+        "name": "last_synced_at!: chrono::NaiveDateTime",
+        "ordinal": 10,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "created_at!: chrono::NaiveDateTime",
+        "ordinal": 11,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "updated_at!: chrono::NaiveDateTime",
+        "ordinal": 12,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 13
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c86118f6e528a734e9a1ce2b1da60e65f1031ea4efc289dc7da9bacb633cfa72"
+}

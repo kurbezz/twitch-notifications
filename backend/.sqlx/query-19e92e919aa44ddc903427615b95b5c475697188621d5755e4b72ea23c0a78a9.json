@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                id as \"id!: String\",\n                owner_user_id as \"owner_user_id!: String\",\n                grantee_user_id as \"grantee_user_id!: String\",\n                can_manage as \"can_manage!: bool\",\n                created_at as \"created_at!: chrono::NaiveDateTime\",\n                updated_at as \"updated_at!: chrono::NaiveDateTime\"\n            FROM settings_shares\n            WHERE owner_user_id = ? AND grantee_user_id = ?\n            LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "owner_user_id!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "grantee_user_id!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "can_manage!: bool",
+        "ordinal": 3,
+        "type_info": "Bool"
+      },
+      {
+        "name": "created_at!: chrono::NaiveDateTime",
+        "ordinal": 4,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "updated_at!: chrono::NaiveDateTime",
+        "ordinal": 5,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "19e92e919aa44ddc903427615b95b5c475697188621d5755e4b72ea23c0a78a9"
+}

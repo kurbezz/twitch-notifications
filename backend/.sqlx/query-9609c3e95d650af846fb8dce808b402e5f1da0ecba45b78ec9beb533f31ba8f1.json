@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE notification_history\n            SET status = ?, error_message = ?\n            WHERE id = ?\n            RETURNING\n                id as \"id!: String\",\n                user_id as \"user_id!: String\",\n                notification_type as \"notification_type!: String\",\n                destination_type as \"destination_type!: String\",\n                destination_id as \"destination_id!: String\",\n                content as \"content!: String\",\n                status as \"status!: String\",\n                error_message as \"error_message?: String\",\n                created_at as \"created_at!: chrono::NaiveDateTime\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "user_id!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "notification_type!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "destination_type!: String",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "destination_id!: String",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "content!: String",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!: String",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "error_message?: String",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: chrono::NaiveDateTime",
+        "ordinal": 8,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "9609c3e95d650af846fb8dce808b402e5f1da0ecba45b78ec9beb533f31ba8f1"
+}

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) FROM notification_history WHERE user_id = ? AND (? IS NULL OR notification_type = ?) AND (? IS NULL OR destination_type = ?) AND (? IS NULL OR status = ?)",
+  "describe": {
+    "columns": [
+      {
+        "name": "COUNT(*)",
+        "ordinal": 0,
+        "type_info": "Int"
+      }
+    ],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "8080c5d4f38ddfcf657ca9990640a5a45d6b7281e3799fe2beb4aa8badcd0f88"
+}

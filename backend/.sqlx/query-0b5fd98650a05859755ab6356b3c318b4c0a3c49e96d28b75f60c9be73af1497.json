@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                id as \"id!: String\",\n                user_id as \"user_id!: String\",\n                stream_online_message as \"stream_online_message!: String\",\n                stream_offline_message as \"stream_offline_message!: String\",\n                stream_title_change_message as \"stream_title_change_message!: String\",\n                stream_category_change_message as \"stream_category_change_message!: String\",\n                reward_redemption_message as \"reward_redemption_message!: String\",\n                notify_reward_redemption as \"notify_reward_redemption!: bool\",\n                created_at as \"created_at!: chrono::NaiveDateTime\",\n                updated_at as \"updated_at!: chrono::NaiveDateTime\"\n            FROM user_settings\n            WHERE user_id = ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "user_id!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "stream_online_message!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "stream_offline_message!: String",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "stream_title_change_message!: String",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "stream_category_change_message!: String",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "reward_redemption_message!: String",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "notify_reward_redemption!: bool",
+        "ordinal": 7,
+        "type_info": "Bool"
+      },
+      {
+        "name": "created_at!: chrono::NaiveDateTime",
+        "ordinal": 8,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "updated_at!: chrono::NaiveDateTime",
+        "ordinal": 9,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0b5fd98650a05859755ab6356b3c318b4c0a3c49e96d28b75f60c9be73af1497"
+}

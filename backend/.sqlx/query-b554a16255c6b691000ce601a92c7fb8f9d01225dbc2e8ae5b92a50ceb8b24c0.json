@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                id as \"id!: String\",\n                user_id as \"user_id!: String\",\n                notification_type as \"notification_type!: String\",\n                destination_type as \"destination_type!: String\",\n                destination_id as \"destination_id!: String\",\n                content as \"content!: String\",\n                status as \"status!: String\",\n                error_message as \"error_message?: String\",\n                created_at as \"created_at!: chrono::NaiveDateTime\"\n            FROM notification_history\n            WHERE user_id = ?\n            AND (? IS NULL OR notification_type = ?)\n            AND (? IS NULL OR destination_type = ?)\n            AND (? IS NULL OR status = ?)\n            ORDER BY created_at DESC\n            LIMIT ?\n            OFFSET ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "user_id!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "notification_type!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "destination_type!: String",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "destination_id!: String",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "content!: String",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!: String",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "error_message?: String",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: chrono::NaiveDateTime",
+        "ordinal": 8,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "b554a16255c6b691000ce601a92c7fb8f9d01225dbc2e8ae5b92a50ceb8b24c0"
+}

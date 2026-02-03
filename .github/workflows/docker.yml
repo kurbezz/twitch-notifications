@@ -132,24 +132,6 @@ jobs:
         with:
           workspaces: backend -> target
 
-      - name: Install sqlx-cli
-        run: cargo install sqlx-cli --no-default-features --features sqlite
-
-      - name: Setup database for SQLx compile-time checks
-        working-directory: ./backend
-        env:
-          DATABASE_URL: sqlite://app.db
-        run: |
-          mkdir -p data
-          sqlx db create
-          sqlx migrate run
-
-      - name: Prepare SQLx metadata for offline mode
-        working-directory: ./backend
-        env:
-          DATABASE_URL: sqlite://app.db
-        run: cargo sqlx prepare --database-url sqlite://app.db
-
       - name: Check formatting
         working-directory: ./backend
         run: cargo fmt --all -- --check

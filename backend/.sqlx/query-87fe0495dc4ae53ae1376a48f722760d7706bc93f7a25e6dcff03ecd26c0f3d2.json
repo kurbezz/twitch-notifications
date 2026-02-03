@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                    UPDATE user_settings\n                    SET\n                        stream_online_message = CASE WHEN stream_online_message = '' THEN ? ELSE stream_online_message END,\n                        stream_offline_message = CASE WHEN stream_offline_message = '' THEN ? ELSE stream_offline_message END,\n                        stream_title_change_message = CASE WHEN stream_title_change_message = '' THEN ? ELSE stream_title_change_message END,\n                        stream_category_change_message = CASE WHEN stream_category_change_message = '' THEN ? ELSE stream_category_change_message END,\n                        reward_redemption_message = CASE WHEN reward_redemption_message = '' THEN ? ELSE reward_redemption_message END,\n                        updated_at = ?\n                    WHERE user_id = ?\n                    RETURNING\n                        id as \"id!: String\",\n                        user_id as \"user_id!: String\",\n                        stream_online_message as \"stream_online_message!: String\",\n                        stream_offline_message as \"stream_offline_message!: String\",\n                        stream_title_change_message as \"stream_title_change_message!: String\",\n                        stream_category_change_message as \"stream_category_change_message!: String\",\n                        reward_redemption_message as \"reward_redemption_message!: String\",\n                        notify_reward_redemption as \"notify_reward_redemption!: bool\",\n                        created_at as \"created_at!: chrono::NaiveDateTime\",\n                        updated_at as \"updated_at!: chrono::NaiveDateTime\"\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "user_id!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "stream_online_message!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "stream_offline_message!: String",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "stream_title_change_message!: String",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "stream_category_change_message!: String",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "reward_redemption_message!: String",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "notify_reward_redemption!: bool",
+        "ordinal": 7,
+        "type_info": "Bool"
+      },
+      {
+        "name": "created_at!: chrono::NaiveDateTime",
+        "ordinal": 8,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "updated_at!: chrono::NaiveDateTime",
+        "ordinal": 9,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "87fe0495dc4ae53ae1376a48f722760d7706bc93f7a25e6dcff03ecd26c0f3d2"
+}

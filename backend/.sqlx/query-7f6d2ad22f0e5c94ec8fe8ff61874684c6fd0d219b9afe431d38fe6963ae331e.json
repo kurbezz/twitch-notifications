@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM settings_shares WHERE owner_user_id = ? AND grantee_user_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "7f6d2ad22f0e5c94ec8fe8ff61874684c6fd0d219b9afe431d38fe6963ae331e"
+}

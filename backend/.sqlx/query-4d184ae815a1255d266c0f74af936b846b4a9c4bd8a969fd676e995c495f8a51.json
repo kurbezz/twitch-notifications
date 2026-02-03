@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM synced_calendar_events WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "4d184ae815a1255d266c0f74af936b846b4a9c4bd8a969fd676e995c495f8a51"
+}

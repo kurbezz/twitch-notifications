@@ -1,0 +1,110 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                id as \"id!: String\",\n                user_id as \"user_id!: String\",\n                discord_guild_id as \"discord_guild_id!: String\",\n                discord_channel_id as \"discord_channel_id!: String\",\n                discord_guild_name as \"discord_guild_name?: String\",\n                discord_channel_name as \"discord_channel_name?: String\",\n                discord_webhook_url as \"discord_webhook_url?: String\",\n                is_enabled as \"is_enabled!: bool\",\n                notify_stream_online as \"notify_stream_online!: bool\",\n                notify_stream_offline as \"notify_stream_offline!: bool\",\n                notify_title_change as \"notify_title_change!: bool\",\n                notify_category_change as \"notify_category_change!: bool\",\n                notify_reward_redemption as \"notify_reward_redemption!: bool\",\n                calendar_sync_enabled as \"calendar_sync_enabled!: bool\",\n                created_at as \"created_at!: chrono::NaiveDateTime\",\n                updated_at as \"updated_at!: chrono::NaiveDateTime\"\n            FROM discord_integrations\n            WHERE user_id = ?\n            ORDER BY created_at DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "user_id!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "discord_guild_id!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "discord_channel_id!: String",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "discord_guild_name?: String",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "discord_channel_name?: String",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "discord_webhook_url?: String",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_enabled!: bool",
+        "ordinal": 7,
+        "type_info": "Bool"
+      },
+      {
+        "name": "notify_stream_online!: bool",
+        "ordinal": 8,
+        "type_info": "Bool"
+      },
+      {
+        "name": "notify_stream_offline!: bool",
+        "ordinal": 9,
+        "type_info": "Bool"
+      },
+      {
+        "name": "notify_title_change!: bool",
+        "ordinal": 10,
+        "type_info": "Bool"
+      },
+      {
+        "name": "notify_category_change!: bool",
+        "ordinal": 11,
+        "type_info": "Bool"
+      },
+      {
+        "name": "notify_reward_redemption!: bool",
+        "ordinal": 12,
+        "type_info": "Bool"
+      },
+      {
+        "name": "calendar_sync_enabled!: bool",
+        "ordinal": 13,
+        "type_info": "Bool"
+      },
+      {
+        "name": "created_at!: chrono::NaiveDateTime",
+        "ordinal": 14,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "updated_at!: chrono::NaiveDateTime",
+        "ordinal": 15,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0a6140c06d3501f0665cc63803646a692bf5545729aafce9ef40a10b8f49d43b"
+}
