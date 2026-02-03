@@ -225,7 +225,7 @@ export default function TelegramCallbackPage() {
       cancelled = true;
       if (interval) clearInterval(interval);
     };
-  }, [location.search, navigate, queryClient, refreshUser]);
+  }, [location.search, navigate, queryClient, refreshUser, t]);
 
   return (
     <div className="flex items-center justify-center min-h-[60vh] p-6">

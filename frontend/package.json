@@ -9,7 +9,9 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "lint:fix": "eslint . --ext ts,tsx --fix --report-unused-disable-directives --max-warnings 0",
     "prepare": "node -e \"const fs = require('fs'); const path = require('path'); const { execSync } = require('child_process'); function findGitRoot(dir) { if (fs.existsSync(path.join(dir, '.git'))) return dir; const parent = path.dirname(dir); if (parent === dir) return null; return findGitRoot(parent); } const root = findGitRoot(process.cwd()); if (root) { const pkgDir = process.cwd(); const huskyCmd = process.platform === 'win32' ? path.join(pkgDir, 'node_modules', '.bin', 'husky.cmd') : path.join(pkgDir, 'node_modules', '.bin', 'husky'); try { if (fs.existsSync(huskyCmd)) { execSync(huskyCmd + ' install', { cwd: root, stdio: 'inherit' }); } else { execSync('husky install', { cwd: root, stdio: 'inherit' }); } } catch (err) { console.error('husky install failed:', err && err.message ? err.message : err); } } else { console.log('No git repository found, skipping husky install.'); }\"",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:watch": "vitest --watch"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
@@ -67,6 +69,10 @@
     "prettier": "^3.8.0",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.4.3",
-    "vite": "^5.2.6"
+    "vite": "^5.2.6",
+    "vitest": "^1.2.1",
+    "@testing-library/react": "^14.0.0",
+    "@testing-library/jest-dom": "^6.0.0",
+    "jsdom": "^21.1.0"
   }
 }

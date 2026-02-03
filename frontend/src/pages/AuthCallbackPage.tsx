@@ -70,7 +70,7 @@ export function AuthCallbackPage() {
     };
 
     handleCallback();
-  }, [searchParams, refreshUser, navigate]);
+  }, [searchParams, refreshUser, navigate, t]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">

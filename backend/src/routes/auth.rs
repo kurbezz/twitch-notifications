@@ -281,7 +281,7 @@ async fn callback(
     }
 
     let raw_redirect = oauth_state.redirect_to.as_deref().unwrap_or("/dashboard");
-    let safe_redirect = if is_safe_redirect(raw_redirect, &frontend_base) {
+    let safe_redirect = if is_safe_redirect(raw_redirect, frontend_base) {
         raw_redirect.to_string()
     } else {
         tracing::warn!("Rejected unsafe redirect_to value: {}", raw_redirect);
@@ -300,7 +300,7 @@ async fn callback(
         "Redirecting to auth/callback at: {} with token expiring at: {}, final redirect: {}",
         callback_url,
         expires_at,
-        final_redirect
+        safe_redirect
     );
 
     Ok(Redirect::to(&redirect_with_fragment))
@@ -535,7 +535,9 @@ async fn download_and_store_telegram_photo(
                                                                         final_resp.bytes().await?;
                                                                     bytes_opt = Some(b);
                                                                     if let Some(found_ext) =
-                                                                        file_path.split('.').last()
+                                                                        file_path
+                                                                            .split('.')
+                                                                            .next_back()
                                                                     {
                                                                         ext = found_ext.to_string();
                                                                     }

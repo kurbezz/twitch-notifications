@@ -175,11 +175,11 @@ async fn update_messages(
     }
 
     let update = UpdateNotificationSettings {
-        stream_online_message: stream_online_message,
-        stream_offline_message: stream_offline_message,
-        stream_title_change_message: stream_title_change_message,
-        stream_category_change_message: stream_category_change_message,
-        reward_redemption_message: reward_redemption_message,
+        stream_online_message,
+        stream_offline_message,
+        stream_title_change_message,
+        stream_category_change_message,
+        reward_redemption_message,
         notify_reward_redemption: None,
     };
 
@@ -737,11 +737,11 @@ async fn update_messages_for_user(
     }
 
     let update = UpdateNotificationSettings {
-        stream_online_message: stream_online_message,
-        stream_offline_message: stream_offline_message,
-        stream_title_change_message: stream_title_change_message,
-        stream_category_change_message: stream_category_change_message,
-        reward_redemption_message: reward_redemption_message,
+        stream_online_message,
+        stream_offline_message,
+        stream_title_change_message,
+        stream_category_change_message,
+        reward_redemption_message,
         notify_reward_redemption: None,
     };
 

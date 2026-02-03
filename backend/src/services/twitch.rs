@@ -870,11 +870,11 @@ impl TwitchService {
             AppError::TwitchApi(format!("Failed to parse EventSub response: {}", e))
         })?;
 
-        return subscription
+        subscription
             .data
             .into_iter()
             .next()
-            .ok_or_else(|| AppError::TwitchApi("No subscription created".to_string()));
+            .ok_or_else(|| AppError::TwitchApi("No subscription created".to_string()))
     }
 
     /// Delete an EventSub subscription (with retries on transient errors)
@@ -929,6 +929,9 @@ impl TwitchService {
     }
 
     /// Background task that refreshes the app access token before expiry.
+    ///
+    /// The refresher now listens for process shutdown (Ctrl-C and SIGTERM on
+    /// unix) and will exit promptly when a shutdown is requested.
     async fn start_app_access_token_refresher(self) {
         const REFRESH_MARGIN_SECS: i64 = 60;
         let mut backoff_secs: u64 = 5;
@@ -953,7 +956,38 @@ impl TwitchService {
             };
 
             if wait_duration.as_secs() > 0 {
-                tokio::time::sleep(wait_duration).await;
+                // Wait for either the computed duration or a shutdown signal.
+                let ctrl_c = tokio::signal::ctrl_c();
+
+                #[cfg(unix)]
+                {
+                    let mut term =
+                        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                            .expect("Failed to bind SIGTERM");
+
+                    tokio::select! {
+                        _ = ctrl_c => {
+                            tracing::info!("App access token refresher received shutdown signal (ctrl_c)");
+                            return;
+                        }
+                        _ = term.recv() => {
+                            tracing::info!("App access token refresher received SIGTERM");
+                            return;
+                        }
+                        _ = tokio::time::sleep(wait_duration) => {}
+                    }
+                }
+
+                #[cfg(not(unix))]
+                {
+                    tokio::select! {
+                        _ = ctrl_c => {
+                            tracing::info!("App access token refresher received shutdown signal (ctrl_c)");
+                            return;
+                        }
+                        _ = tokio::time::sleep(wait_duration) => {}
+                    }
+                }
             }
 
             // Try refreshing with exponential backoff on failures.
@@ -969,7 +1003,41 @@ impl TwitchService {
                             e,
                             backoff_secs
                         );
-                        tokio::time::sleep(StdDuration::from_secs(backoff_secs)).await;
+
+                        // Wait for either backoff duration or a shutdown signal.
+                        let ctrl_c = tokio::signal::ctrl_c();
+
+                        #[cfg(unix)]
+                        {
+                            let mut term = tokio::signal::unix::signal(
+                                tokio::signal::unix::SignalKind::terminate(),
+                            )
+                            .expect("Failed to bind SIGTERM");
+
+                            tokio::select! {
+                                _ = ctrl_c => {
+                                    tracing::info!("App access token refresher received shutdown signal (ctrl_c)");
+                                    return;
+                                }
+                                _ = term.recv() => {
+                                    tracing::info!("App access token refresher received SIGTERM");
+                                    return;
+                                }
+                                _ = tokio::time::sleep(StdDuration::from_secs(backoff_secs)) => {}
+                            }
+                        }
+
+                        #[cfg(not(unix))]
+                        {
+                            tokio::select! {
+                                _ = ctrl_c => {
+                                    tracing::info!("App access token refresher received shutdown signal (ctrl_c)");
+                                    return;
+                                }
+                                _ = tokio::time::sleep(StdDuration::from_secs(backoff_secs)) => {}
+                            }
+                        }
+
                         backoff_secs = std::cmp::min(backoff_secs * 2, 600);
                     }
                 }

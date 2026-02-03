@@ -11,6 +11,7 @@ pub struct Config {
     pub discord: DiscordConfig,
     pub jwt: JwtConfig,
     pub rate_limit: RateLimitConfig,
+    pub notification_retry: NotificationRetryConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -69,6 +70,29 @@ pub struct RateLimitConfig {
     pub webhook_per_second: u32,
     /// Burst size for webhook endpoints
     pub webhook_burst: u32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct NotificationRetryConfig {
+    /// Whether the notification retry worker is enabled.
+    pub enabled: bool,
+    /// Initial backoff in seconds for the first retry attempt.
+    pub initial_backoff_seconds: u64,
+    /// How often (seconds) the worker polls for due tasks.
+    pub poll_interval_seconds: u64,
+    /// Maximum number of retry attempts before moving the task to DLQ.
+    pub max_attempts: u32,
+    /// Maximum parallel tasks processed by the retry worker.
+    pub worker_concurrency: u32,
+    /// Cap for exponential backoff (seconds).
+    pub max_backoff_seconds: u64,
+    /// Default TTL (seconds) for queued notifications when no per-type TTL is set.
+    pub default_ttl_seconds: u64,
+    /// Per-notification-type TTLs (seconds) — used to avoid retrying stale/time-sensitive events.
+    pub stream_online_ttl_seconds: u64,
+    pub title_change_ttl_seconds: u64,
+    pub category_change_ttl_seconds: u64,
+    pub reward_redemption_ttl_seconds: u64,
 }
 
 impl Config {
@@ -146,6 +170,61 @@ impl Config {
                     .parse()
                     .unwrap_or(50),
             },
+            notification_retry: NotificationRetryConfig {
+                enabled: match env::var("NOTIFICATION_RETRY_ENABLED") {
+                    Ok(v) => match v.to_lowercase().as_str() {
+                        "1" | "true" | "yes" => true,
+                        "0" | "false" | "no" => false,
+                        _ => true,
+                    },
+                    Err(_) => true,
+                },
+                initial_backoff_seconds: env::var("NOTIFICATION_RETRY_INITIAL_BACKOFF_SECONDS")
+                    .unwrap_or_else(|_| "30".to_string())
+                    .parse()
+                    .unwrap_or(30u64),
+                poll_interval_seconds: env::var("NOTIFICATION_RETRY_POLL_INTERVAL_SECONDS")
+                    .unwrap_or_else(|_| "5".to_string())
+                    .parse()
+                    .unwrap_or(5u64),
+                max_attempts: env::var("NOTIFICATION_RETRY_MAX_ATTEMPTS")
+                    .unwrap_or_else(|_| "5".to_string())
+                    .parse()
+                    .unwrap_or(5u32),
+                worker_concurrency: env::var("NOTIFICATION_RETRY_WORKER_CONCURRENCY")
+                    .unwrap_or_else(|_| "10".to_string())
+                    .parse()
+                    .unwrap_or(10u32),
+                max_backoff_seconds: env::var("NOTIFICATION_RETRY_MAX_BACKOFF_SECONDS")
+                    .unwrap_or_else(|_| "3600".to_string())
+                    .parse()
+                    .unwrap_or(3600u64),
+
+                // TTLs: control how long retries are attempted before giving up because
+                // the notification is likely stale (time-sensitive events like stream_online).
+                default_ttl_seconds: env::var("NOTIFICATION_TTL_DEFAULT_SECONDS")
+                    .unwrap_or_else(|_| "300".to_string())
+                    .parse()
+                    .unwrap_or(300u64),
+                stream_online_ttl_seconds: env::var("NOTIFICATION_TTL_STREAM_ONLINE_SECONDS")
+                    .unwrap_or_else(|_| "300".to_string()) // 5 minutes by default
+                    .parse()
+                    .unwrap_or(300u64),
+                title_change_ttl_seconds: env::var("NOTIFICATION_TTL_TITLE_CHANGE_SECONDS")
+                    .unwrap_or_else(|_| "300".to_string())
+                    .parse()
+                    .unwrap_or(300u64),
+                category_change_ttl_seconds: env::var("NOTIFICATION_TTL_CATEGORY_CHANGE_SECONDS")
+                    .unwrap_or_else(|_| "300".to_string())
+                    .parse()
+                    .unwrap_or(300u64),
+                reward_redemption_ttl_seconds: env::var(
+                    "NOTIFICATION_TTL_REWARD_REDEMPTION_SECONDS",
+                )
+                .unwrap_or_else(|_| "300".to_string())
+                .parse()
+                .unwrap_or(300u64),
+            },
         })
     }
 }
@@ -194,6 +273,19 @@ impl Default for Config {
                 auth_burst: 10,
                 webhook_per_second: 10,
                 webhook_burst: 50,
+            },
+            notification_retry: NotificationRetryConfig {
+                enabled: true,
+                initial_backoff_seconds: 30,
+                poll_interval_seconds: 5,
+                max_attempts: 5,
+                worker_concurrency: 10,
+                max_backoff_seconds: 3600,
+                default_ttl_seconds: 300,
+                stream_online_ttl_seconds: 300,
+                title_change_ttl_seconds: 300,
+                category_change_ttl_seconds: 300,
+                reward_redemption_ttl_seconds: 300,
             },
         }
     }

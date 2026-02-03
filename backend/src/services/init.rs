@@ -99,19 +99,32 @@ pub async fn initialize_optional_integrations(state: &Arc<crate::AppState>) {
 /// - periodic EventSub synchronization for all users
 /// - periodic calendar synchronization for integrations
 ///
-/// These are spawned as `tokio::spawn` tasks and will run for the lifetime
-/// of the process.
-pub fn spawn_background_workers(state: Arc<crate::AppState>) {
+/// These are spawned as `tokio::spawn` tasks. The function returns a vector of
+/// `JoinHandle<()>`s so callers can await task shutdown. Each worker listens
+/// for a shutdown notification via a `tokio::sync::broadcast::Sender<()>`.
+pub fn spawn_background_workers(
+    state: Arc<crate::AppState>,
+    shutdown: tokio::sync::broadcast::Sender<()>,
+) -> Vec<tokio::task::JoinHandle<()>> {
+    let mut handles = Vec::new();
+
     // EventSub sync worker
     {
+        let mut shutdown_rx = shutdown.subscribe();
         let state = state.clone();
-        tokio::spawn(async move {
+        handles.push(tokio::spawn(async move {
             loop {
                 tracing::info!("Starting periodic EventSub synchronization for all users");
 
                 match crate::db::UserRepository::list_all(&state.db).await {
                     Ok(users) => {
                         for user in users {
+                            // Check for shutdown between users so we can exit faster.
+                            if shutdown_rx.try_recv().is_ok() {
+                                tracing::info!("EventSub worker received shutdown signal");
+                                return;
+                            }
+
                             if let Err(e) =
                                 crate::services::subscriptions::SubscriptionManager::sync_for_user(
                                     &state, &user,
@@ -136,16 +149,23 @@ pub fn spawn_background_workers(state: Arc<crate::AppState>) {
                     }
                 }
 
-                // Sleep for 1 hour between sync cycles
-                tokio::time::sleep(std::time::Duration::from_secs(60 * 60)).await;
+                // Sleep for 1 hour between sync cycles or exit early on shutdown.
+                tokio::select! {
+                    _ = shutdown_rx.recv() => {
+                        tracing::info!("EventSub worker shutting down");
+                        break;
+                    }
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(60 * 60)) => {}
+                }
             }
-        });
+        }));
     }
 
     // Calendar sync worker
     {
+        let mut shutdown_rx = shutdown.subscribe();
         let state = state.clone();
-        tokio::spawn(async move {
+        handles.push(tokio::spawn(async move {
             loop {
                 tracing::info!("Starting periodic calendar synchronization for integrations");
 
@@ -155,9 +175,102 @@ pub fn spawn_background_workers(state: Arc<crate::AppState>) {
                     tracing::warn!("Calendar sync failed: {:?}", e);
                 }
 
-                // Sleep for 1 hour between sync cycles
-                tokio::time::sleep(std::time::Duration::from_secs(60 * 60)).await;
+                // Sleep for 1 hour between sync cycles or exit early on shutdown.
+                tokio::select! {
+                    _ = shutdown_rx.recv() => {
+                        tracing::info!("Calendar sync worker shutting down");
+                        break;
+                    }
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(60 * 60)) => {}
+                }
             }
-        });
+        }));
     }
+
+    // Notification retry worker
+    {
+        let mut shutdown_rx = shutdown.subscribe();
+        let state = state.clone();
+        handles.push(tokio::spawn(async move {
+            loop {
+                tracing::debug!("Polling notification retry queue for due tasks");
+
+                // Exit early if shutdown requested
+                if shutdown_rx.try_recv().is_ok() {
+                    tracing::info!("Notification retry worker received shutdown signal");
+                    break;
+                }
+
+                // If retries are disabled, sleep longer and continue.
+                if !state.config.notification_retry.enabled {
+                    tokio::select! {
+                        _ = shutdown_rx.recv() => {
+                            tracing::info!("Notification retry worker shutting down");
+                            break;
+                        }
+                        _ = tokio::time::sleep(std::time::Duration::from_secs(60)) => {}
+                    }
+                    continue;
+                }
+
+                let concurrency = state.config.notification_retry.worker_concurrency as i64;
+
+                match crate::db::repository::NotificationQueueRepository::fetch_and_claim_due(
+                    &state.db,
+                    concurrency,
+                )
+                .await
+                {
+                    Ok(tasks) => {
+                        if tasks.is_empty() {
+                            // Nothing due right now; back off according to configured poll interval.
+                            tokio::select! {
+                                _ = shutdown_rx.recv() => {
+                                    tracing::info!("Notification retry worker shutting down");
+                                    break;
+                                }
+                                _ = tokio::time::sleep(std::time::Duration::from_secs(
+                                    state.config.notification_retry.poll_interval_seconds,
+                                )) => {}
+                            }
+                            continue;
+                        }
+
+                        // Spawn a task per claimed item (bounded by the number claimed).
+                        for task in tasks {
+                            if shutdown_rx.try_recv().is_ok() {
+                                tracing::info!("Skipping spawning new notification retry tasks due to shutdown");
+                                break;
+                            }
+                            let state = state.clone();
+                            tokio::spawn(async move {
+                                let svc = crate::services::notifications::NotificationService::new(
+                                    &state,
+                                );
+                                if let Err(e) = svc.process_queued_task(task).await {
+                                    tracing::warn!("Notification retry task failed: {:?}", e);
+                                }
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to fetch due notification tasks: {:?}", e);
+                    }
+                }
+
+                // Wait before next poll or exit early on shutdown.
+                tokio::select! {
+                    _ = shutdown_rx.recv() => {
+                        tracing::info!("Notification retry worker shutting down");
+                        break;
+                    }
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(
+                        state.config.notification_retry.poll_interval_seconds,
+                    )) => {}
+                }
+            }
+        }));
+    }
+
+    handles
 }

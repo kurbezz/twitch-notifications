@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { useForm } from '@/lib/useForm';
+import { useEffect, useState, type ComponentType } from 'react';
+import { useForm, useWatch } from '@/lib/useForm';
+import type { AnyFieldApi } from '@tanstack/react-form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { settingsApi, usersApi } from '@/lib/api';
 import type { OutgoingShare, IncomingShare, User } from '@/lib/api';
@@ -34,19 +35,25 @@ export default function SettingsSharing() {
   const [activeTab, setActiveTab] = useState<'outgoing' | 'incoming'>('outgoing');
 
   // Form state for creating a share (search by nickname + select)
-  const { setValue, getValues, reset } = useForm<{ searchTerm: string; canManage: boolean }>({
+  const form = useForm<{ searchTerm: string; canManage: boolean }>({
     defaultValues: { searchTerm: '', canManage: false },
   });
+  const { setValue, reset } = form;
+  const searchTerm = useWatch(form, 'searchTerm');
+  const canManage = useWatch(form, 'canManage');
+  const Field = (form.Field ?? (() => null)) as ComponentType<{
+    name?: string;
+    children?: (field: AnyFieldApi) => unknown;
+  }>;
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Debounce the search input (reads from form state)
+  // Debounce the search input (reads from form state via useWatch)
   const [debouncedSearch, setDebouncedSearch] = useState('');
   useEffect(() => {
-    const id = setTimeout(() => setDebouncedSearch(getValues().searchTerm ?? ''), 300);
+    const id = setTimeout(() => setDebouncedSearch(searchTerm ?? ''), 300);
     return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getValues().searchTerm]);
+  }, [searchTerm]);
 
   // Query for user search results (enabled when debounced search >= 2 chars)
   const { data: userSearchResults, isLoading: userSearchLoading } = useQuery<User[]>({
@@ -128,16 +135,14 @@ export default function SettingsSharing() {
 
   const handleCreateShare = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    const values = getValues();
-    const login = selectedUser ? selectedUser.twitch_login : (values.searchTerm ?? '').trim();
+    const login = selectedUser ? selectedUser.twitch_login : (searchTerm ?? '').trim();
     if (!login) {
       await showAlert(t('settings_sharing.enter_login'));
       return;
     }
     setIsSubmitting(true);
     try {
-      const values = getValues();
-      await createMutation.mutateAsync({ twitch_login: login, can_manage: values.canManage });
+      await createMutation.mutateAsync({ twitch_login: login, can_manage: canManage ?? false });
     } finally {
       setIsSubmitting(false);
     }
@@ -188,16 +193,51 @@ export default function SettingsSharing() {
           {/* Grant form */}
           <form onSubmit={handleCreateShare} className="flex gap-2 items-start">
             <div className="relative w-full">
-              <input
-                type="text"
-                value={getValues().searchTerm ?? ''}
-                onChange={(e) => {
-                  setValue('searchTerm', e.target.value);
-                  setSelectedUser(null);
-                }}
-                placeholder={t('settings_sharing.placeholder')}
-                className="rounded-md border bg-background px-3 py-2 text-sm w-full"
-              />
+              {Field ? (
+                <Field
+                  name="searchTerm"
+                  validators={{
+                    onBlur: ({ value }) =>
+                      typeof value === 'string' && value.trim().length >= 2
+                        ? undefined
+                        : t('settings_sharing.search_min_length'),
+                  }}
+                >
+                  {(field: AnyFieldApi) => (
+                    <div>
+                      <input
+                        type="text"
+                        value={field.state?.value ?? ''}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => {
+                          field.handleChange(e.target.value);
+                          setSelectedUser(null);
+                        }}
+                        placeholder={t('settings_sharing.placeholder')}
+                        className="rounded-md border bg-background px-3 py-2 text-sm w-full"
+                      />
+                      {!field.state.meta.isValid &&
+                      field.state.meta.errors &&
+                      field.state.meta.errors.length > 0 ? (
+                        <div className="mt-1 text-sm text-red-500" role="alert">
+                          {field.state.meta.errors.join(', ')}
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </Field>
+              ) : (
+                <input
+                  type="text"
+                  value={searchTerm ?? ''}
+                  onChange={(e) => {
+                    setValue('searchTerm', e.target.value);
+                    setSelectedUser(null);
+                  }}
+                  placeholder={t('settings_sharing.placeholder')}
+                  className="rounded-md border bg-background px-3 py-2 text-sm w-full"
+                />
+              )}
 
               {selectedUser && (
                 <div className="mt-2 flex items-center gap-2">
@@ -250,15 +290,31 @@ export default function SettingsSharing() {
               )}
             </div>
 
-            <label className="flex items-center gap-2 mt-1">
-              <input
-                type="checkbox"
-                checked={getValues().canManage ?? false}
-                onChange={(e) => setValue('canManage', e.target.checked)}
-                className="h-4 w-4"
-              />
-              <span className="text-sm">{t('settings_sharing.can_manage')}</span>
-            </label>
+            {Field ? (
+              <Field name="canManage">
+                {(field: AnyFieldApi) => (
+                  <label className="flex items-center gap-2 mt-1">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(field.state?.value)}
+                      onChange={(e) => field.handleChange?.(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    <span className="text-sm">{t('settings_sharing.can_manage')}</span>
+                  </label>
+                )}
+              </Field>
+            ) : (
+              <label className="flex items-center gap-2 mt-1">
+                <input
+                  type="checkbox"
+                  checked={canManage ?? false}
+                  onChange={(e) => setValue('canManage', e.target.checked)}
+                  className="h-4 w-4"
+                />
+                <span className="text-sm">{t('settings_sharing.can_manage')}</span>
+              </label>
+            )}
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />

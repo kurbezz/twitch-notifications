@@ -262,7 +262,7 @@ impl UserRepository {
         .bind(access_token)
         .bind(refresh_token)
         .bind(token_expires_at)
-        .bind(&now)
+        .bind(now)
         .bind(user_id)
         .execute(pool)
         .await
@@ -271,6 +271,7 @@ impl UserRepository {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn upsert_by_twitch_id(
         pool: &SqlitePool,
         twitch_id: &str,
@@ -324,7 +325,7 @@ impl UserRepository {
             .bind(twitch_display_name)
             .bind(twitch_email)
             .bind(twitch_profile_image_url)
-            .bind(&now)
+            .bind(now)
             .bind(&user.id)
             .fetch_one(pool)
             .await
@@ -369,8 +370,8 @@ impl UserRepository {
             .bind(None::<String>)
             .bind(None::<String>)
             .bind(lang)
-            .bind(&now)
-            .bind(&now)
+            .bind(now)
+            .bind(now)
             .fetch_one(pool)
             .await
             .map_err(AppError::Database)?
@@ -420,7 +421,7 @@ impl UserRepository {
         .bind(telegram_user_id)
         .bind(telegram_username)
         .bind(telegram_photo_url)
-        .bind(&now)
+        .bind(now)
         .bind(user_id)
         .execute(pool)
         .await
@@ -440,7 +441,7 @@ impl UserRepository {
             "#,
         )
         .bind(lang)
-        .bind(&now)
+        .bind(now)
         .bind(user_id)
         .execute(pool)
         .await
@@ -461,7 +462,7 @@ impl UserRepository {
             WHERE id = ?
             "#,
         )
-        .bind(&now)
+        .bind(now)
         .bind(user_id)
         .execute(pool)
         .await
@@ -492,7 +493,7 @@ impl UserRepository {
         .bind(discord_user_id)
         .bind(discord_username)
         .bind(discord_avatar_url)
-        .bind(&now)
+        .bind(now)
         .bind(user_id)
         .execute(pool)
         .await
@@ -514,7 +515,7 @@ impl UserRepository {
             WHERE id = ?
             "#,
         )
-        .bind(&now)
+        .bind(now)
         .bind(user_id)
         .execute(pool)
         .await

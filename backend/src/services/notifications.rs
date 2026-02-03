@@ -1,9 +1,20 @@
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::db::{
-    CreateNotificationLog, DiscordIntegration, DiscordIntegrationRepository,
-    NotificationLogRepository, NotificationSettings, NotificationSettingsRepository,
-    TelegramIntegration, TelegramIntegrationRepository, UserRepository,
+    CreateNotificationLog,
+    CreateNotificationTask,
+    DiscordIntegration,
+    DiscordIntegrationRepository,
+    NotificationLogRepository,
+    // Queue/retry types
+    NotificationQueueRepository,
+    NotificationSettings,
+    NotificationSettingsRepository,
+    NotificationTask,
+    TelegramIntegration,
+    TelegramIntegrationRepository,
+    UserRepository,
 };
 use crate::error::AppResult;
 use crate::services::discord::DiscordService;
@@ -11,6 +22,7 @@ use crate::services::telegram::TelegramService;
 use crate::AppState;
 
 use async_trait::async_trait;
+use chrono::Utc;
 use sqlx::SqlitePool;
 use tokio::sync::RwLock;
 
@@ -37,7 +49,7 @@ impl NotificationType {
 }
 
 /// Data for stream online notifications
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamOnlineData {
     pub streamer_name: String,
     pub streamer_avatar: Option<String>,
@@ -47,27 +59,27 @@ pub struct StreamOnlineData {
 }
 
 /// Data for stream offline notifications
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamOfflineData {
     pub streamer_name: String,
 }
 
 /// Data for title change notifications
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TitleChangeData {
     pub streamer_name: String,
     pub new_title: String,
 }
 
 /// Data for category change notifications
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CategoryChangeData {
     pub streamer_name: String,
     pub new_category: String,
 }
 
 /// Data for reward redemption notifications
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RewardRedemptionData {
     pub redeemer_name: String,
     pub reward_name: String,
@@ -170,6 +182,74 @@ mod tests {
     }
 }
 
+/// Serialize the notification-specific payload so the background worker can
+/// reconstruct the original `NotificationContent` and re-send it.
+fn serialize_notification_content<'a>(content: NotificationContent<'a>) -> (String, String) {
+    match content {
+        NotificationContent::StreamOnline(data) => (
+            "stream_online".to_string(),
+            serde_json::to_string(&data).unwrap_or_else(|_| "{}".to_string()),
+        ),
+        NotificationContent::StreamOffline(data) => (
+            "stream_offline".to_string(),
+            serde_json::to_string(&data).unwrap_or_else(|_| "{}".to_string()),
+        ),
+        NotificationContent::TitleChange(data) => (
+            "title_change".to_string(),
+            serde_json::to_string(&data).unwrap_or_else(|_| "{}".to_string()),
+        ),
+        NotificationContent::CategoryChange(data) => (
+            "category_change".to_string(),
+            serde_json::to_string(&data).unwrap_or_else(|_| "{}".to_string()),
+        ),
+        NotificationContent::RewardRedemption(data) => (
+            "reward_redemption".to_string(),
+            serde_json::to_string(&data).unwrap_or_else(|_| "{}".to_string()),
+        ),
+    }
+}
+
+/// Heuristics to decide whether an error is likely transient and should be retried.
+/// This inspects common HTTP API messages and network error strings.
+fn is_retryable_error(err: Option<&str>, destination_type: &str) -> bool {
+    let e = match err {
+        Some(v) => v.to_lowercase(),
+        None => return false,
+    };
+
+    // Common transient indicators
+    if e.contains("too many requests")
+        || e.contains("429")
+        || e.contains("timeout")
+        || e.contains("timed out")
+        || e.contains("temporarily unavailable")
+        || e.contains("service unavailable")
+        || e.contains("bad gateway")
+        || e.contains("connection reset")
+        || e.contains("failed to send")
+    {
+        return true;
+    }
+
+    // Try to parse numeric status codes in known message shapes like:
+    // "Discord API error (502): ..." or "Discord webhook error (503): ..."
+    if destination_type == "discord"
+        && (e.contains("discord api error (") || e.contains("discord webhook error ("))
+    {
+        if let Some(open) = e.find('(') {
+            if let Some(close_rel) = e[open + 1..].find(')') {
+                let code_str = &e[open + 1..open + 1 + close_rel];
+                if let Ok(code) = code_str.parse::<u16>() {
+                    return code == 429 || code >= 500;
+                }
+            }
+        }
+    }
+
+    // Default conservative behavior: do not retry
+    false
+}
+
 #[async_trait]
 pub trait Notifier: Send + Sync + 'static {
     async fn send_notification<'a>(
@@ -194,6 +274,7 @@ pub struct NotificationResult {
 /// Service for sending notifications to various channels
 pub struct NotificationService {
     pool: SqlitePool,
+    state: Arc<AppState>,
     telegram: Arc<RwLock<Option<TelegramService>>>,
     discord: Arc<RwLock<Option<DiscordService>>>,
 }
@@ -202,6 +283,7 @@ impl NotificationService {
     pub fn new(state: &Arc<AppState>) -> Self {
         Self {
             pool: state.db.clone(),
+            state: state.clone(),
             telegram: state.telegram.clone(),
             discord: state.discord.clone(),
         }
@@ -260,6 +342,15 @@ impl NotificationService {
 
         let mut results: Vec<NotificationResult> = Vec::new();
 
+        // Determine notification type once (used for logging / queueing)
+        let ntype = match content {
+            NotificationContent::StreamOnline(_) => NotificationType::StreamOnline,
+            NotificationContent::StreamOffline(_) => NotificationType::StreamOffline,
+            NotificationContent::TitleChange(_) => NotificationType::TitleChange,
+            NotificationContent::CategoryChange(_) => NotificationType::CategoryChange,
+            NotificationContent::RewardRedemption(_) => NotificationType::RewardRedemption,
+        };
+
         // Telegram integrations
         let telegram_integrations =
             TelegramIntegrationRepository::find_enabled_for_user(&self.pool, user_id).await?;
@@ -286,6 +377,32 @@ impl NotificationService {
                         &message,
                     )
                     .await;
+
+                // Determine whether this error should be retried.
+                let should_retry =
+                    !res.success && is_retryable_error(res.error.as_deref(), "telegram");
+
+                // Create a log entry. If we plan to retry, mark log as 'pending'.
+                let log = self
+                    .log_notification(
+                        user_id,
+                        ntype,
+                        &res,
+                        &message,
+                        if should_retry { Some("pending") } else { None },
+                    )
+                    .await?;
+
+                if should_retry {
+                    let ctx = IntegrationContext {
+                        destination_id: integration.telegram_chat_id.clone(),
+                        webhook_url: None,
+                    };
+                    // Enqueue for retries
+                    self.enqueue_retry(&log, "telegram", &ctx, content, &message)
+                        .await?;
+                }
+
                 results.push(res);
             }
         }
@@ -316,23 +433,31 @@ impl NotificationService {
                         &message,
                     )
                     .await;
+
+                let should_retry =
+                    !res.success && is_retryable_error(res.error.as_deref(), "discord");
+
+                let log = self
+                    .log_notification(
+                        user_id,
+                        ntype,
+                        &res,
+                        &message,
+                        if should_retry { Some("pending") } else { None },
+                    )
+                    .await?;
+
+                if should_retry {
+                    let ctx = IntegrationContext {
+                        destination_id: integration.discord_channel_id.clone(),
+                        webhook_url: integration.discord_webhook_url.clone(),
+                    };
+                    self.enqueue_retry(&log, "discord", &ctx, content, &message)
+                        .await?;
+                }
+
                 results.push(res);
             }
-        }
-
-        // Choose a notification type to be logged
-        let ntype = match content {
-            NotificationContent::StreamOnline(_) => NotificationType::StreamOnline,
-            NotificationContent::StreamOffline(_) => NotificationType::StreamOffline,
-            NotificationContent::TitleChange(_) => NotificationType::TitleChange,
-            NotificationContent::CategoryChange(_) => NotificationType::CategoryChange,
-            NotificationContent::RewardRedemption(_) => NotificationType::RewardRedemption,
-        };
-
-        // Log notifications (use the rendered message)
-        for result in &results {
-            self.log_notification(user_id, ntype, result, &message)
-                .await?;
         }
 
         Ok(results)
@@ -463,22 +588,511 @@ impl NotificationService {
         notification_type: NotificationType,
         result: &NotificationResult,
         message: &str,
-    ) -> AppResult<()> {
+        status_override: Option<&str>,
+    ) -> AppResult<crate::db::NotificationLog> {
+        let status = if result.success {
+            "sent".to_string()
+        } else if let Some(ov) = status_override {
+            ov.to_string()
+        } else {
+            "failed".to_string()
+        };
+
         let log = CreateNotificationLog {
             user_id: user_id.to_string(),
             notification_type: notification_type.as_str().to_string(),
             destination_type: result.destination_type.clone(),
             destination_id: result.destination_id.clone(),
             content: message.to_string(),
-            status: if result.success {
-                "sent".to_string()
-            } else {
-                "failed".to_string()
-            },
+            status,
             error_message: result.error.clone(),
         };
 
-        NotificationLogRepository::create(&self.pool, log).await?;
+        let created = NotificationLogRepository::create(&self.pool, log).await?;
+        Ok(created)
+    }
+
+    /// Enqueue a failed notification for background retry processing.
+    async fn enqueue_retry<'a>(
+        &self,
+        log: &crate::db::NotificationLog,
+        destination_type: &str,
+        ctx: &IntegrationContext,
+        content: NotificationContent<'a>,
+        message: &str,
+    ) -> AppResult<()> {
+        // Serialize specific payload & choose initial schedule based on config
+        let (notification_type, content_json) = serialize_notification_content(content);
+
+        let cfg = &self.state.config.notification_retry;
+        let initial_secs = cfg.initial_backoff_seconds as i64;
+        let next_attempt_at = Utc::now().naive_utc() + chrono::Duration::seconds(initial_secs);
+
+        // Determine expiration/TTL based on notification type to avoid retrying stale events
+        let expires_in_secs = match notification_type.as_str() {
+            "stream_online" => cfg.stream_online_ttl_seconds,
+            "title_change" => cfg.title_change_ttl_seconds,
+            "category_change" => cfg.category_change_ttl_seconds,
+            "reward_redemption" => cfg.reward_redemption_ttl_seconds,
+            _ => cfg.default_ttl_seconds,
+        } as i64;
+
+        let expires_at = Utc::now().naive_utc() + chrono::Duration::seconds(expires_in_secs);
+
+        let task = CreateNotificationTask {
+            notification_log_id: Some(log.id.clone()),
+            user_id: log.user_id.clone(),
+            notification_type,
+            content_json,
+            message: message.to_string(),
+            destination_type: destination_type.to_string(),
+            destination_id: ctx.destination_id.clone(),
+            webhook_url: ctx.webhook_url.clone(),
+            max_attempts: Some(cfg.max_attempts as i32),
+            next_attempt_at: Some(next_attempt_at),
+            expires_at: Some(expires_at),
+        };
+
+        NotificationQueueRepository::create(&self.pool, task).await?;
+        tracing::info!(
+            "Enqueued notification retry: log={}, dest={}, next_attempt_at={}, expires_at={}",
+            log.id,
+            ctx.destination_id,
+            next_attempt_at,
+            expires_at
+        );
         Ok(())
+    }
+
+    /// Process a single queued notification task: attempt delivery, schedule retries,
+    /// and move to DLQ when necessary.
+    ///
+    /// The method:
+    ///  - skips/expiries tasks past `expires_at`,
+    ///  - attempts delivery via Telegram/Discord services,
+    ///  - on success marks the queue entry as `succeeded` and the notification log as `sent`,
+    ///  - on transient failure computes exponential backoff, increments attempts and reschedules,
+    ///  - on permanent failure or when max attempts are exhausted, moves the task to `dead` (DLQ)
+    ///    and marks the notification log as `failed`.
+    pub async fn process_queued_task(&self, task: NotificationTask) -> AppResult<()> {
+        let now = Utc::now().naive_utc();
+
+        // If expired, move to DLQ and update log as 'expired'
+        if let Some(exp) = task.expires_at {
+            if exp <= now {
+                tracing::info!(
+                    "Notification task {} expired (expires_at={} now={}), moving to DLQ",
+                    task.id,
+                    exp,
+                    now
+                );
+                let _ = NotificationQueueRepository::mark_dead(
+                    &self.pool,
+                    &task.id,
+                    Some("expired".to_string()),
+                )
+                .await;
+                if let Some(ref log_id) = task.notification_log_id {
+                    let _ = NotificationLogRepository::update_status(
+                        &self.pool,
+                        log_id,
+                        "expired",
+                        Some("Notification expired"),
+                    )
+                    .await;
+                }
+                return Ok(());
+            }
+        }
+
+        // Load notification settings and user; failures to load are treated as transient
+        let settings =
+            match NotificationSettingsRepository::get_or_create(&self.pool, &task.user_id).await {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to load notification settings for user {}: {:?}",
+                        task.user_id,
+                        e
+                    );
+                    let cfg = &self.state.config.notification_retry;
+                    let next = now + chrono::Duration::seconds(cfg.initial_backoff_seconds as i64);
+                    let _ = NotificationQueueRepository::register_attempt_and_schedule(
+                        &self.pool,
+                        &task.id,
+                        next,
+                        Some(format!("Failed to load settings: {}", e)),
+                    )
+                    .await;
+                    return Ok(());
+                }
+            };
+
+        let user = match UserRepository::find_by_id(&self.pool, &task.user_id).await {
+            Ok(Some(u)) => u,
+            Ok(None) => {
+                tracing::warn!(
+                    "User {} for notification task {} not found; moving to DLQ",
+                    task.user_id,
+                    task.id
+                );
+                let _ = NotificationQueueRepository::mark_dead(
+                    &self.pool,
+                    &task.id,
+                    Some("user not found".to_string()),
+                )
+                .await;
+                if let Some(ref log_id) = task.notification_log_id {
+                    let _ = NotificationLogRepository::update_status(
+                        &self.pool,
+                        log_id,
+                        "failed",
+                        Some("User not found"),
+                    )
+                    .await;
+                }
+                return Ok(());
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to fetch user {} for notification task {}: {:?}",
+                    task.user_id,
+                    task.id,
+                    e
+                );
+                let cfg = &self.state.config.notification_retry;
+                let next = now + chrono::Duration::seconds(cfg.initial_backoff_seconds as i64);
+                let _ = NotificationQueueRepository::register_attempt_and_schedule(
+                    &self.pool,
+                    &task.id,
+                    next,
+                    Some(format!("Failed to fetch user: {}", e)),
+                )
+                .await;
+                return Ok(());
+            }
+        };
+
+        let stream_url = Some(format!("https://twitch.tv/{}", user.twitch_login));
+        let ctx = IntegrationContext {
+            destination_id: task.destination_id.clone(),
+            webhook_url: task.webhook_url.clone(),
+        };
+
+        // Attempt sending via the appropriate service.
+        let send_result: Result<(), crate::error::AppError> = match task.destination_type.as_str() {
+            "telegram" => {
+                let telegram_opt = self.telegram.read().await.clone();
+                let telegram = match telegram_opt {
+                    Some(t) => t,
+                    None => {
+                        // Service not initialized -> transient; schedule retry
+                        let cfg = &self.state.config.notification_retry;
+                        let next =
+                            now + chrono::Duration::seconds(cfg.initial_backoff_seconds as i64);
+                        let _ = NotificationQueueRepository::register_attempt_and_schedule(
+                            &self.pool,
+                            &task.id,
+                            next,
+                            Some("Telegram service not initialized".to_string()),
+                        )
+                        .await;
+                        return Ok(());
+                    }
+                };
+
+                match task.notification_type.as_str() {
+                    "stream_online" => {
+                        let data: StreamOnlineData = serde_json::from_str(&task.content_json)
+                            .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
+                        telegram
+                            .send_notification(
+                                &ctx,
+                                NotificationContent::StreamOnline(&data),
+                                &settings,
+                                stream_url,
+                                task.message.clone(),
+                            )
+                            .await
+                    }
+                    "stream_offline" => {
+                        let data: StreamOfflineData = serde_json::from_str(&task.content_json)
+                            .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
+                        telegram
+                            .send_notification(
+                                &ctx,
+                                NotificationContent::StreamOffline(&data),
+                                &settings,
+                                stream_url,
+                                task.message.clone(),
+                            )
+                            .await
+                    }
+                    "title_change" => {
+                        let data: TitleChangeData = serde_json::from_str(&task.content_json)
+                            .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
+                        telegram
+                            .send_notification(
+                                &ctx,
+                                NotificationContent::TitleChange(&data),
+                                &settings,
+                                stream_url,
+                                task.message.clone(),
+                            )
+                            .await
+                    }
+                    "category_change" => {
+                        let data: CategoryChangeData = serde_json::from_str(&task.content_json)
+                            .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
+                        telegram
+                            .send_notification(
+                                &ctx,
+                                NotificationContent::CategoryChange(&data),
+                                &settings,
+                                stream_url,
+                                task.message.clone(),
+                            )
+                            .await
+                    }
+                    "reward_redemption" => {
+                        let data: RewardRedemptionData = serde_json::from_str(&task.content_json)
+                            .map_err(|e| {
+                            crate::error::AppError::Internal(anyhow::anyhow!(e))
+                        })?;
+                        telegram
+                            .send_notification(
+                                &ctx,
+                                NotificationContent::RewardRedemption(&data),
+                                &settings,
+                                stream_url,
+                                task.message.clone(),
+                            )
+                            .await
+                    }
+                    _ => Err(crate::error::AppError::BadRequest(
+                        "Unknown notification type".to_string(),
+                    )),
+                }
+            }
+            "discord" => {
+                let discord_opt = self.discord.read().await.clone();
+                let discord = match discord_opt {
+                    Some(d) => d,
+                    None => {
+                        // Service not initialized -> transient; schedule retry
+                        let cfg = &self.state.config.notification_retry;
+                        let next =
+                            now + chrono::Duration::seconds(cfg.initial_backoff_seconds as i64);
+                        let _ = NotificationQueueRepository::register_attempt_and_schedule(
+                            &self.pool,
+                            &task.id,
+                            next,
+                            Some("Discord service not initialized".to_string()),
+                        )
+                        .await;
+                        return Ok(());
+                    }
+                };
+
+                match task.notification_type.as_str() {
+                    "stream_online" => {
+                        let data: StreamOnlineData = serde_json::from_str(&task.content_json)
+                            .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
+                        discord
+                            .send_notification(
+                                &ctx,
+                                NotificationContent::StreamOnline(&data),
+                                &settings,
+                                stream_url,
+                                task.message.clone(),
+                            )
+                            .await
+                    }
+                    "stream_offline" => {
+                        let data: StreamOfflineData = serde_json::from_str(&task.content_json)
+                            .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
+                        discord
+                            .send_notification(
+                                &ctx,
+                                NotificationContent::StreamOffline(&data),
+                                &settings,
+                                stream_url,
+                                task.message.clone(),
+                            )
+                            .await
+                    }
+                    "title_change" => {
+                        let data: TitleChangeData = serde_json::from_str(&task.content_json)
+                            .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
+                        discord
+                            .send_notification(
+                                &ctx,
+                                NotificationContent::TitleChange(&data),
+                                &settings,
+                                stream_url,
+                                task.message.clone(),
+                            )
+                            .await
+                    }
+                    "category_change" => {
+                        let data: CategoryChangeData = serde_json::from_str(&task.content_json)
+                            .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
+                        discord
+                            .send_notification(
+                                &ctx,
+                                NotificationContent::CategoryChange(&data),
+                                &settings,
+                                stream_url,
+                                task.message.clone(),
+                            )
+                            .await
+                    }
+                    "reward_redemption" => {
+                        let data: RewardRedemptionData = serde_json::from_str(&task.content_json)
+                            .map_err(|e| {
+                            crate::error::AppError::Internal(anyhow::anyhow!(e))
+                        })?;
+                        discord
+                            .send_notification(
+                                &ctx,
+                                NotificationContent::RewardRedemption(&data),
+                                &settings,
+                                stream_url,
+                                task.message.clone(),
+                            )
+                            .await
+                    }
+                    _ => Err(crate::error::AppError::BadRequest(
+                        "Unknown notification type".to_string(),
+                    )),
+                }
+            }
+            _ => {
+                // Unknown destination type -> move to DLQ and update the log.
+                let msg = format!("Unknown destination type: {}", task.destination_type);
+                let _ =
+                    NotificationQueueRepository::mark_dead(&self.pool, &task.id, Some(msg.clone()))
+                        .await;
+                if let Some(ref log_id) = task.notification_log_id {
+                    let _ = NotificationLogRepository::update_status(
+                        &self.pool,
+                        log_id,
+                        "failed",
+                        Some(&msg),
+                    )
+                    .await;
+                }
+                return Ok(());
+            }
+        };
+
+        // Handle send result
+        match send_result {
+            Ok(_) => {
+                // Success -> mark succeeded and update log
+                let _ = NotificationQueueRepository::mark_succeeded(&self.pool, &task.id).await;
+                if let Some(ref log_id) = task.notification_log_id {
+                    let _ =
+                        NotificationLogRepository::update_status(&self.pool, log_id, "sent", None)
+                            .await;
+                }
+                tracing::info!("Queued notification {} sent successfully", task.id);
+                Ok(())
+            }
+            Err(e) => {
+                let err_str = e.to_string();
+
+                // Permanent errors -> move to DLQ
+                if !is_retryable_error(Some(&err_str), &task.destination_type) {
+                    let _ = NotificationQueueRepository::mark_dead(
+                        &self.pool,
+                        &task.id,
+                        Some(err_str.clone()),
+                    )
+                    .await;
+                    if let Some(ref log_id) = task.notification_log_id {
+                        let _ = NotificationLogRepository::update_status(
+                            &self.pool,
+                            log_id,
+                            "failed",
+                            Some(&err_str),
+                        )
+                        .await;
+                    }
+                    tracing::warn!("Queued notification {} moved to DLQ: {}", task.id, err_str);
+                    return Ok(());
+                }
+
+                // Transient error -> schedule retry with exponential backoff
+                let cfg = &self.state.config.notification_retry;
+                let attempts = task.attempts as u32;
+
+                // Compute delay = min(max_backoff, initial_backoff * 2^attempts)
+                let mut delay: u128 = cfg.initial_backoff_seconds as u128;
+                for _ in 0..attempts {
+                    delay = delay.saturating_mul(2);
+                    if delay as u64 >= cfg.max_backoff_seconds {
+                        delay = cfg.max_backoff_seconds as u128;
+                        break;
+                    }
+                }
+                if delay as u64 > cfg.max_backoff_seconds {
+                    delay = cfg.max_backoff_seconds as u128;
+                }
+
+                let next = now + chrono::Duration::seconds(delay as i64);
+
+                match NotificationQueueRepository::register_attempt_and_schedule(
+                    &self.pool,
+                    &task.id,
+                    next,
+                    Some(err_str.clone()),
+                )
+                .await
+                {
+                    Ok(updated_task) => {
+                        if updated_task.status == "dead" {
+                            if let Some(ref log_id) = task.notification_log_id {
+                                let _ = NotificationLogRepository::update_status(
+                                    &self.pool,
+                                    log_id,
+                                    "failed",
+                                    Some(&err_str),
+                                )
+                                .await;
+                            }
+                            tracing::warn!(
+                                "Queued notification {} reached max attempts and moved to DLQ",
+                                task.id
+                            );
+                        } else {
+                            if let Some(ref log_id) = task.notification_log_id {
+                                let _ = NotificationLogRepository::update_status(
+                                    &self.pool,
+                                    log_id,
+                                    "pending",
+                                    Some(&err_str),
+                                )
+                                .await;
+                            }
+                            tracing::info!(
+                                "Queued notification {} rescheduled after error: {}",
+                                task.id,
+                                err_str
+                            );
+                        }
+                        Ok(())
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to reschedule queued notification {}: {:?}",
+                            task.id,
+                            e
+                        );
+                        Ok(())
+                    }
+                }
+            }
+        }
     }
 }

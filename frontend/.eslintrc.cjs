@@ -33,7 +33,10 @@ module.exports = {
   rules: {
     // Project preferences / sensible defaults
     '@typescript-eslint/explicit-module-boundary-types': 'off',
-    '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+    '@typescript-eslint/no-unused-vars': [
+      'error',
+      { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+    ],
     // New JSX transform (React 17+) doesn't require React in scope
     'react/react-in-jsx-scope': 'off',
     // We use TypeScript for typings, so PropTypes are unnecessary

@@ -1,5 +1,8 @@
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::time::Duration;
 
 use axum::{routing::get, Router};
@@ -66,15 +69,19 @@ async fn main() -> anyhow::Result<()> {
     // Initialize optional integrations (Telegram, Discord)
     init::initialize_optional_integrations(&app_state).await;
 
-    // Spawn background workers
-    init::spawn_background_workers(app_state.clone());
+    // Create shutdown notifier for background workers and std threads
+    let (shutdown_tx, _shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
+    let thread_shutdown = Arc::new(AtomicBool::new(false));
+
+    // Spawn background workers (returns JoinHandles so we can await shutdown)
+    let bg_handles = init::spawn_background_workers(app_state.clone(), shutdown_tx.clone());
 
     // Build rate limiters for public endpoints (auth, webhooks)
     // Build auth rate limiter with a custom error handler.
     // The error handler returns a proper 429 status and Retry-After header when limits are exceeded.
     let mut auth_builder = GovernorConfigBuilder::default();
     auth_builder.per_second(config.rate_limit.auth_per_second.into());
-    auth_builder.burst_size(config.rate_limit.auth_burst.into());
+    auth_builder.burst_size(config.rate_limit.auth_burst);
     auth_builder.key_extractor(SmartIpKeyExtractor);
     auth_builder.error_handler(|error: GovernorError| -> http::Response<Body> {
         match error {
@@ -156,15 +163,26 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Background cleanup for auth limiter storage
-    {
+    let auth_cleaner = {
         let limiter = auth_gov_conf.limiter().clone();
         let interval = Duration::from_secs(60);
-        std::thread::spawn(move || loop {
-            std::thread::sleep(interval);
-            tracing::debug!("auth rate limiter size: {}", limiter.len());
-            limiter.retain_recent();
-        });
-    }
+        let flag = thread_shutdown.clone();
+        std::thread::spawn(move || {
+            // Use smaller sleep granularity to allow quick shutdown.
+            let tick = Duration::from_secs(1);
+            loop {
+                for _ in 0..interval.as_secs() {
+                    if flag.load(Ordering::SeqCst) {
+                        tracing::info!("Auth rate limiter cleanup thread exiting");
+                        return;
+                    }
+                    std::thread::sleep(tick);
+                }
+                tracing::debug!("auth rate limiter size: {}", limiter.len());
+                limiter.retain_recent();
+            }
+        })
+    };
 
     // Apply the auth rate limiter layer
     let auth_rate_layer = GovernorLayer {
@@ -174,7 +192,7 @@ async fn main() -> anyhow::Result<()> {
     // Webhooks limiter
     let mut webhooks_builder = GovernorConfigBuilder::default();
     webhooks_builder.per_second(config.rate_limit.webhook_per_second.into());
-    webhooks_builder.burst_size(config.rate_limit.webhook_burst.into());
+    webhooks_builder.burst_size(config.rate_limit.webhook_burst);
     webhooks_builder.key_extractor(SmartIpKeyExtractor);
     webhooks_builder.error_handler(|error: GovernorError| -> http::Response<Body> {
         match error {
@@ -232,15 +250,25 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Background cleanup for webhooks limiter storage
-    {
+    let webhooks_cleaner = {
         let limiter = webhooks_gov_conf.limiter().clone();
         let interval = Duration::from_secs(60);
-        std::thread::spawn(move || loop {
-            std::thread::sleep(interval);
-            tracing::debug!("webhooks rate limiter size: {}", limiter.len());
-            limiter.retain_recent();
-        });
-    }
+        let flag = thread_shutdown.clone();
+        std::thread::spawn(move || {
+            let tick = Duration::from_secs(1);
+            loop {
+                for _ in 0..interval.as_secs() {
+                    if flag.load(Ordering::SeqCst) {
+                        tracing::info!("Webhooks rate limiter cleanup thread exiting");
+                        return;
+                    }
+                    std::thread::sleep(tick);
+                }
+                tracing::debug!("webhooks rate limiter size: {}", limiter.len());
+                limiter.retain_recent();
+            }
+        })
+    };
 
     let webhooks_rate_layer = GovernorLayer {
         config: webhooks_gov_conf.clone(),
@@ -303,12 +331,77 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("Server listening on {}", addr);
 
+    // Start server using axum `serve` helper. We also spawn a signal listener
+    // and select between the server future and the signal future. When a
+    // shutdown signal is received we notify background workers and threads
+    // and then drop the server future (which stops accepting new connections).
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(
+    let server_fut = axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .await?;
+    );
 
+    let shutdown_tx_clone = shutdown_tx.clone();
+    let thread_shutdown_clone = thread_shutdown.clone();
+
+    let signal_fut = async move {
+        let ctrl_c = tokio::signal::ctrl_c();
+
+        #[cfg(unix)]
+        {
+            let mut term =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .expect("Failed to bind SIGTERM");
+            tokio::select! {
+                _ = ctrl_c => {},
+                _ = term.recv() => {},
+            }
+        }
+
+        #[cfg(not(unix))]
+        {
+            ctrl_c.await.expect("Failed to bind Ctrl+C");
+        }
+
+        tracing::info!("Shutdown signal received, notifying background workers and threads");
+        let _ = shutdown_tx_clone.send(());
+        thread_shutdown_clone.store(true, Ordering::SeqCst);
+    };
+
+    tokio::select! {
+        res = server_fut => {
+            if let Err(e) = res {
+                tracing::error!("Server error: {}", e);
+            }
+        }
+        _ = signal_fut => {
+            tracing::info!("Signal handler completed; server future dropped to stop accepting new connections");
+        }
+    }
+
+    // Give background workers some time to finish their work.
+    let shutdown_wait = Duration::from_secs(15);
+    tracing::info!(
+        "Waiting up to {}s for background workers to exit",
+        shutdown_wait.as_secs()
+    );
+
+    // Wait for tokio background workers to finish with a timeout.
+    let bg_wait = async {
+        for h in bg_handles {
+            let _ = h.await;
+        }
+    };
+    let _ = tokio::time::timeout(shutdown_wait, bg_wait).await;
+
+    // Join std threads; they check `thread_shutdown` and should exit quickly.
+    if let Err(e) = auth_cleaner.join() {
+        tracing::warn!("Auth cleanup thread join failed: {:?}", e);
+    }
+    if let Err(e) = webhooks_cleaner.join() {
+        tracing::warn!("Webhooks cleanup thread join failed: {:?}", e);
+    }
+
+    tracing::info!("Shutdown complete");
     Ok(())
 }

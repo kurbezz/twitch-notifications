@@ -207,4 +207,43 @@ impl NotificationLogRepository {
 
         Ok(map)
     }
+
+    /// Update the status and optional error message for an existing notification log entry.
+    /// Returns the updated `NotificationLog`.
+    pub async fn update_status(
+        pool: &SqlitePool,
+        id: &str,
+        status: &str,
+        error_message: Option<&str>,
+    ) -> AppResult<NotificationLog> {
+        // Convert to an owned Option<String> to satisfy the query macro type expectations.
+        let last_error = error_message.map(|s| s.to_string());
+
+        let updated = sqlx::query_as!(
+            NotificationLog,
+            r#"
+            UPDATE notification_history
+            SET status = ?, error_message = ?
+            WHERE id = ?
+            RETURNING
+                id as "id!: String",
+                user_id as "user_id!: String",
+                notification_type as "notification_type!: String",
+                destination_type as "destination_type!: String",
+                destination_id as "destination_id!: String",
+                content as "content!: String",
+                status as "status!: String",
+                error_message as "error_message?: String",
+                created_at as "created_at!: chrono::NaiveDateTime"
+            "#,
+            status,
+            last_error,
+            id
+        )
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::Database)?;
+
+        Ok(updated)
+    }
 }
