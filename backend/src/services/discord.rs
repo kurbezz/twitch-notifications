@@ -87,6 +87,7 @@ pub struct DiscordChannel {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscordRole {
     pub id: String,
+    #[serde(deserialize_with = "deserialize_permissions")]
     pub permissions: u64,
 }
 
@@ -569,6 +570,46 @@ impl DiscordService {
             .await
             .map_err(|e| AppError::Discord(format!("Failed to parse events response: {}", e)))
     }
+}
+
+fn deserialize_permissions<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: serde::de::Deserializer<'de>,
+{
+    use serde::de::Error as _;
+
+    struct PermVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for PermVisitor {
+        type Value = u64;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a number or string containing a u64 permissions bitfield")
+        }
+
+        fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(v)
+        }
+
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            v.parse::<u64>().map_err(|e| E::custom(format!("invalid permissions string: {}", e)))
+        }
+
+        fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            self.visit_str(&v)
+        }
+    }
+
+    deserializer.deserialize_any(PermVisitor)
 }
 
 impl DiscordEmbed {
