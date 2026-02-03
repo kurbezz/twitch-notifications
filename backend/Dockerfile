@@ -48,7 +48,7 @@ RUN apt-get update && apt-get install -y \
 RUN useradd -m -u 1000 appuser
 
 # Create data directory
-RUN mkdir -p /data && chown appuser:appuser /data
+RUN mkdir -p /app/data && chown appuser:appuser /app/data
 
 # Copy the binary from builder
 COPY --from=builder /app/target/release/twitch-notifications /usr/local/bin/twitch-notifications
@@ -63,7 +63,7 @@ USER appuser
 ENV RUST_LOG=info
 ENV HOST=0.0.0.0
 ENV PORT=8080
-ENV DATABASE_URL=sqlite:///data/app.db
+ENV DATABASE_URL=sqlite:/app/data/shared_lists.db?mode=rwc
 
 # Expose port
 EXPOSE 8080
