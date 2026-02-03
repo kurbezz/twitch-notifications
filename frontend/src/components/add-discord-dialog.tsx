@@ -106,6 +106,8 @@ export default function AddDiscordDialog({ open, onClose, ownerId }: Props) {
   const Field = (form.Field ?? (() => null)) as ComponentType<{
     name?: string;
     children?: (field: AnyFieldApi) => unknown;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    validators?: Record<string, (args: { value: any }) => string | undefined>;
   }>;
 
   const {
@@ -174,7 +176,8 @@ export default function AddDiscordDialog({ open, onClose, ownerId }: Props) {
               <Field
                 name="guildId"
                 validators={{
-                  onChange: ({ value }) =>
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  onChange: ({ value }: { value: any }) =>
                     !value || !String(value).trim()
                       ? t('discord.add_dialog.server_required')
                       : undefined,
@@ -225,7 +228,8 @@ export default function AddDiscordDialog({ open, onClose, ownerId }: Props) {
             <Field
               name="channelId"
               validators={{
-                onChange: ({ value }) =>
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                onChange: ({ value }: { value: any }) =>
                   !value || !String(value).trim()
                     ? t('discord.add_dialog.channel_required')
                     : undefined,
@@ -279,7 +283,8 @@ export default function AddDiscordDialog({ open, onClose, ownerId }: Props) {
             <Field
               name="webhookUrl"
               validators={{
-                onChange: ({ value }) => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                onChange: ({ value }: { value: any }) => {
                   const v = String(value ?? '').trim();
                   if (!v) return undefined;
                   try {

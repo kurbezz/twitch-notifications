@@ -1,6 +1,6 @@
 import { useEffect, useState, type ComponentType } from 'react';
-import { useForm, useWatch } from '@/lib/useForm';
 import type { AnyFieldApi } from '@tanstack/react-form';
+import { useForm, useWatch } from '@/lib/useForm';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { settingsApi, usersApi } from '@/lib/api';
 import type { OutgoingShare, IncomingShare, User } from '@/lib/api';
@@ -44,6 +44,8 @@ export default function SettingsSharing() {
   const Field = (form.Field ?? (() => null)) as ComponentType<{
     name?: string;
     children?: (field: AnyFieldApi) => unknown;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    validators?: Record<string, (args: { value: any }) => string | undefined>;
   }>;
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -197,7 +199,8 @@ export default function SettingsSharing() {
                 <Field
                   name="searchTerm"
                   validators={{
-                    onBlur: ({ value }) =>
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    onBlur: ({ value }: { value: any }) =>
                       typeof value === 'string' && value.trim().length >= 2
                         ? undefined
                         : t('settings_sharing.search_min_length'),
