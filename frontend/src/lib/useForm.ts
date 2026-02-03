@@ -152,7 +152,8 @@ export type UseFormReturn<T extends Record<string, unknown>> = {
   Field?: ComponentType<{
     name?: keyof T | string;
     children?: (field: AnyFieldApi) => unknown;
-    validators?: unknown;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    validators?: Record<string, (args: { value: any }) => string | undefined>;
   }>;
   Subscribe?: ComponentType<{
     selector?: (state: unknown) => unknown;

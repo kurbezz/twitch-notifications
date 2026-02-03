@@ -12,7 +12,12 @@ function TestComp({ captureRef }: TestCompProps) {
   if (captureRef) captureRef(form);
   // form is created and field is registered below
   const a = useWatch(form, 'a') ?? '';
-  const Field = (form.Field ?? (() => null)) as React.ComponentType<unknown>;
+  const Field = (form.Field ?? (() => null)) as React.ComponentType<{
+    name?: string;
+    children?: (field: unknown) => React.ReactNode;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    validators?: Record<string, (args: { value: any }) => string | undefined>;
+  }>;
 
   return (
     <div>
