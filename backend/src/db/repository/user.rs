@@ -157,6 +157,7 @@ impl UserRepository {
                 twitch_access_token, twitch_refresh_token, twitch_token_expires_at,
                 telegram_user_id, telegram_username, telegram_photo_url,
                 discord_user_id, discord_username, discord_avatar_url,
+                lang,
                 created_at, updated_at
             FROM users
             WHERE LOWER(twitch_login) LIKE ? OR LOWER(twitch_display_name) LIKE ?
@@ -520,6 +521,89 @@ impl UserRepository {
         .execute(pool)
         .await
         .map_err(AppError::Database)?;
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use sqlx::sqlite::SqlitePoolOptions;
+    use sqlx::SqlitePool;
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn search_includes_lang() -> anyhow::Result<()> {
+        // Use in-memory SQLite pool with a single connection for tests
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await?;
+
+        // Create a minimal users table (including `lang`)
+        sqlx::query(
+            r#"
+            CREATE TABLE users (
+                id TEXT PRIMARY KEY,
+                twitch_id TEXT NOT NULL,
+                twitch_login TEXT NOT NULL,
+                twitch_display_name TEXT NOT NULL,
+                twitch_email TEXT,
+                twitch_profile_image_url TEXT,
+                twitch_access_token TEXT,
+                twitch_refresh_token TEXT,
+                twitch_token_expires_at DATETIME,
+                telegram_user_id TEXT,
+                telegram_username TEXT,
+                telegram_photo_url TEXT,
+                discord_user_id TEXT,
+                discord_username TEXT,
+                discord_avatar_url TEXT,
+                lang TEXT DEFAULT 'ru',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        let now = Utc::now().naive_utc();
+        let id = Uuid::new_v4().to_string();
+
+        sqlx::query(
+            r#"
+            INSERT INTO users (
+                id, twitch_id, twitch_login, twitch_display_name,
+                twitch_email, twitch_profile_image_url,
+                twitch_access_token, twitch_refresh_token, twitch_token_expires_at,
+                lang, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&id)
+        .bind("t123")
+        .bind("login")
+        .bind("display")
+        .bind("email")
+        .bind("profile")
+        .bind("access")
+        .bind("refresh")
+        .bind(now)
+        .bind(Some("en"))
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await?;
+
+        let results = UserRepository::search(&pool, "login", 10)
+            .await
+            .map_err(|e| anyhow::anyhow!(format!("{:?}", e)))?;
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].lang.as_deref(), Some("en"));
 
         Ok(())
     }
