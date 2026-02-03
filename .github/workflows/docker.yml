@@ -144,16 +144,26 @@ jobs:
           sqlx db create
           sqlx migrate run
 
+      - name: Prepare SQLx metadata for offline mode
+        working-directory: ./backend
+        env:
+          DATABASE_URL: sqlite://app.db
+        run: cargo sqlx prepare --database-url sqlite://app.db
+
       - name: Check formatting
         working-directory: ./backend
         run: cargo fmt --all -- --check
 
       - name: Run Clippy
         working-directory: ./backend
+        env:
+          SQLX_OFFLINE: true
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Run tests
         working-directory: ./backend
+        env:
+          SQLX_OFFLINE: true
         run: cargo test --all-features
 
   test-frontend:
