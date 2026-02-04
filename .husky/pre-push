@@ -1,0 +1,33 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "Running pre-push checks: backend tests, frontend typecheck and lint"
+
+printf "\n➡️  Backend: running cargo test --all-features\n"
+if [ -d backend ]; then
+  (cd backend && cargo test --all-features) || {
+    echo "\n❌ Backend tests failed. Aborting push." >&2
+    exit 1
+  }
+else
+  echo "Backend folder not found, skipping backend tests"
+fi
+
+printf "\n➡️  Frontend: running TypeScript check and ESLint\n"
+if [ -d frontend ]; then
+  # Typecheck (no emit)
+  if ! npx --no-install --prefix frontend tsc --noEmit; then
+    echo "\n❌ Frontend typecheck failed. Aborting push." >&2
+    exit 1
+  fi
+
+  # Lint
+  if ! npm --prefix frontend run lint; then
+    echo "\n❌ Frontend lint failed. Aborting push." >&2
+    exit 1
+  fi
+else
+  echo "Frontend folder not found, skipping frontend checks"
+fi
+
+echo "\n✅ All pre-push checks passed"
