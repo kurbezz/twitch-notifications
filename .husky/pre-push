@@ -15,16 +15,20 @@ fi
 
 printf "\n➡️  Frontend: running TypeScript check and ESLint\n"
 if [ -d frontend ]; then
-  # Typecheck (no emit)
-  if ! npx --no-install --prefix frontend tsc --noEmit; then
-    echo "\n❌ Frontend typecheck failed. Aborting push." >&2
-    exit 1
-  fi
+  if [ -d frontend/node_modules ]; then
+    # Typecheck (no emit)
+    if ! npx --no-install --prefix frontend tsc --noEmit; then
+      echo "\n❌ Frontend typecheck failed. Aborting push." >&2
+      exit 1
+    fi
 
-  # Lint
-  if ! npm --prefix frontend run lint; then
-    echo "\n❌ Frontend lint failed. Aborting push." >&2
-    exit 1
+    # Lint
+    if ! npm --prefix frontend run lint; then
+      echo "\n❌ Frontend lint failed. Aborting push." >&2
+      exit 1
+    fi
+  else
+    echo "\n⚠️  frontend/node_modules not present — skipping frontend checks. To run them locally, install dev deps: 'cd frontend && npm ci'"
   fi
 else
   echo "Frontend folder not found, skipping frontend checks"
