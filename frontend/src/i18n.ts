@@ -62,12 +62,12 @@ i18n.on('languageChanged', (lng) => {
   // Show a small toast indicating success or failure. This is best-effort
   // and does not block the UI.
   try {
-    const t = toast({ title: i18n.t('settings.language_saving') });
+    const t = toast({ title: String(i18n.t('settings.language_saving')) });
     void authApi
       .updateMe({ lang: lng })
       .then(() => {
         t.update({
-          title: i18n.t('settings.language_saved'),
+          title: String(i18n.t('settings.language_saved')),
           variant: 'success',
           description: undefined,
         });
@@ -75,7 +75,10 @@ i18n.on('languageChanged', (lng) => {
         setTimeout(() => t.dismiss(), 1500);
       })
       .catch(() => {
-        t.update({ title: i18n.t('settings.language_saving_error'), variant: 'destructive' });
+        t.update({
+          title: String(i18n.t('settings.language_saving_error')),
+          variant: 'destructive',
+        });
         // Let user dismiss manually after a while
       });
   } catch {
