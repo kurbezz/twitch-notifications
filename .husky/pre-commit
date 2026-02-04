@@ -1,4 +1,35 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
-npx --no-install --prefix frontend lint-staged
+echo "Running pre-commit checks..."
+
+# Frontend: lint-staged (prettier + eslint)
+printf "\n➡️  Frontend: running lint-staged\n"
+npx --no-install --prefix frontend lint-staged || {
+  echo "\n❌ Frontend lint-staged failed. Aborting commit." >&2
+  exit 1
+}
+
+# Backend: format check
+printf "\n➡️  Backend: checking formatting\n"
+if [ -d backend ]; then
+  if ! (cd backend && cargo fmt --all -- --check); then
+    echo "\n❌ Backend formatting check failed. Run 'cargo fmt --all' to fix." >&2
+    exit 1
+  fi
+else
+  echo "Backend folder not found, skipping backend format check"
+fi
+
+# Backend: clippy
+printf "\n➡️  Backend: running clippy\n"
+if [ -d backend ]; then
+  if ! (cd backend && cargo clippy --all-targets --all-features -- -D warnings); then
+    echo "\n❌ Backend clippy failed. Aborting commit." >&2
+    exit 1
+  fi
+else
+  echo "Backend folder not found, skipping backend clippy"
+fi
+
+echo "\n✅ All pre-commit checks passed"

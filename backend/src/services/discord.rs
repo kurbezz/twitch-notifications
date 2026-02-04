@@ -542,10 +542,9 @@ impl DiscordService {
                     )));
                 }
 
-                return retry_response
-                    .json()
-                    .await
-                    .map_err(|e| AppError::Discord(format!("Failed to parse event response: {}", e)));
+                return retry_response.json().await.map_err(|e| {
+                    AppError::Discord(format!("Failed to parse event response: {}", e))
+                });
             }
 
             return Err(AppError::Discord(format!(
@@ -612,10 +611,9 @@ impl DiscordService {
                     )));
                 }
 
-                return retry_response
-                    .json()
-                    .await
-                    .map_err(|e| AppError::Discord(format!("Failed to parse event response: {}", e)));
+                return retry_response.json().await.map_err(|e| {
+                    AppError::Discord(format!("Failed to parse event response: {}", e))
+                });
             }
 
             return Err(AppError::Discord(format!(

@@ -35,8 +35,11 @@ to run builds/tests and to align with project conventions.
 - Single module tests: `cargo test routes::auth::tests::test_name`
 
 ### Git hooks
-- Husky pre-commit runs: `npx --no-install --prefix frontend lint-staged`
-- lint-staged: Prettier + ESLint on `*.{ts,tsx,js,jsx}`; Prettier on `*.{json,md}`
+- Husky pre-commit runs:
+  - Frontend: `lint-staged` (Prettier + ESLint on `*.{ts,tsx,js,jsx}`; Prettier on `*.{json,md}`)
+  - Backend: `cargo fmt --all -- --check` (format check)
+  - Backend: `cargo clippy --all-targets --all-features -- -D warnings` (lint)
+- Husky pre-push runs: backend tests and frontend typecheck/lint
 
 ## Code style guidelines
 
