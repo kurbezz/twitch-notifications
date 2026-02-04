@@ -130,13 +130,22 @@ impl CalendarSyncManager {
         };
 
         // Check if event is in the past - Discord doesn't allow scheduling events in the past
+        // For recurring events, Twitch API returns all occurrences as separate segments,
+        // so we skip past occurrences and only create Discord events for future ones.
         let now = Utc::now().naive_utc();
         if start_time < now {
-            warn!(
-                "Segment {} starts in the past ({}), skipping Discord event creation",
-                segment.id, start_time
-            );
-            return;
+            if segment.is_recurring {
+                // For recurring events, this is expected - Twitch will return future occurrences
+                // as separate segments, so we just skip this past occurrence
+                return;
+            } else {
+                // For non-recurring events in the past, skip Discord event creation
+                warn!(
+                    "Non-recurring segment {} starts in the past ({}), skipping Discord event creation",
+                    segment.id, start_time
+                );
+                return;
+            }
         }
 
         // Prepare Discord ScheduledEvent payload
