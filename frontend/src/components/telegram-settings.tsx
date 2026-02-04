@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { telegramApi, TelegramBotInfo, authApi } from '@/lib/api';
+import { getApiUrl } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
@@ -70,8 +71,9 @@ export default function TelegramSettings({ redirectTo = '/settings' }: { redirec
         : 'ru';
     script.setAttribute('data-lang', lang);
 
-    // Include redirect_to so TelegramCallbackPage can send user back to the provided redirectTo
-    const authUrl = `${window.location.origin}/integrations/telegram/callback?redirect_to=${encodeURIComponent(
+    // Include redirect_to so the backend can redirect the user back to the provided redirectTo
+    // Use the API base URL so the Telegram Login Widget posts directly to the backend
+    const authUrl = `${getApiUrl()}/api/auth/telegram/link?redirect_to=${encodeURIComponent(
       redirectTo,
     )}`;
     script.setAttribute('data-auth-url', authUrl);
