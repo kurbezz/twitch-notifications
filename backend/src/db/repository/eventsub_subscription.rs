@@ -21,7 +21,8 @@ impl EventSubSubscriptionRepository {
         let subscription_type = subscription.subscription_type;
         let status = subscription.status;
 
-        sqlx::query(
+        sqlx::query_as!(
+            EventSubSubscription,
             r#"
             INSERT INTO eventsub_subscriptions (
                 id,
@@ -33,22 +34,26 @@ impl EventSubSubscriptionRepository {
                 updated_at
             )
             VALUES (?, ?, ?, ?, ?, ?, ?)
+            RETURNING
+                id as "id!: String",
+                twitch_subscription_id as "twitch_subscription_id!: String",
+                user_id as "user_id!: String",
+                subscription_type as "subscription_type!: String",
+                status as "status!: String",
+                created_at as "created_at!: chrono::NaiveDateTime",
+                updated_at as "updated_at!: chrono::NaiveDateTime"
             "#,
+            id,
+            twitch_subscription_id,
+            user_id,
+            subscription_type,
+            status,
+            now,
+            now
         )
-        .bind(id.clone())
-        .bind(&twitch_subscription_id)
-        .bind(user_id)
-        .bind(subscription_type)
-        .bind(status)
-        .bind(now)
-        .bind(now)
-        .execute(pool)
+        .fetch_one(pool)
         .await
-        .map_err(AppError::Database)?;
-
-        Self::find_by_twitch_subscription_id(pool, &twitch_subscription_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound("EventSub subscription not found".to_string()))
+        .map_err(AppError::Database)
     }
 
     // find_by_user_id_and_type removed - unused
@@ -58,21 +63,22 @@ impl EventSubSubscriptionRepository {
         pool: &SqlitePool,
         user_id: &str,
     ) -> AppResult<Vec<EventSubSubscription>> {
-        sqlx::query_as::<_, EventSubSubscription>(
+        sqlx::query_as!(
+            EventSubSubscription,
             r#"
             SELECT
-                id,
-                twitch_subscription_id,
-                user_id,
-                subscription_type,
-                status,
-                created_at,
-                updated_at
+                id as "id!: String",
+                twitch_subscription_id as "twitch_subscription_id!: String",
+                user_id as "user_id!: String",
+                subscription_type as "subscription_type!: String",
+                status as "status!: String",
+                created_at as "created_at!: chrono::NaiveDateTime",
+                updated_at as "updated_at!: chrono::NaiveDateTime"
             FROM eventsub_subscriptions
             WHERE user_id = ?
             "#,
+            user_id
         )
-        .bind(user_id)
         .fetch_all(pool)
         .await
         .map_err(AppError::Database)
@@ -83,21 +89,22 @@ impl EventSubSubscriptionRepository {
         pool: &SqlitePool,
         twitch_subscription_id: &str,
     ) -> AppResult<Option<EventSubSubscription>> {
-        sqlx::query_as::<_, EventSubSubscription>(
+        sqlx::query_as!(
+            EventSubSubscription,
             r#"
             SELECT
-                id,
-                twitch_subscription_id,
-                user_id,
-                subscription_type,
-                status,
-                created_at,
-                updated_at
+                id as "id!: String",
+                twitch_subscription_id as "twitch_subscription_id!: String",
+                user_id as "user_id!: String",
+                subscription_type as "subscription_type!: String",
+                status as "status!: String",
+                created_at as "created_at!: chrono::NaiveDateTime",
+                updated_at as "updated_at!: chrono::NaiveDateTime"
             FROM eventsub_subscriptions
             WHERE twitch_subscription_id = ?
             "#,
+            twitch_subscription_id
         )
-        .bind(twitch_subscription_id)
         .fetch_optional(pool)
         .await
         .map_err(AppError::Database)
@@ -111,24 +118,25 @@ impl EventSubSubscriptionRepository {
     ) -> AppResult<EventSubSubscription> {
         let now = Utc::now().naive_utc();
 
-        sqlx::query_as::<_, EventSubSubscription>(
+        sqlx::query_as!(
+            EventSubSubscription,
             r#"
             UPDATE eventsub_subscriptions
             SET status = ?, updated_at = ?
             WHERE twitch_subscription_id = ?
             RETURNING
-                id,
-                twitch_subscription_id,
-                user_id,
-                subscription_type,
-                status,
-                created_at,
-                updated_at
+                id as "id!: String",
+                twitch_subscription_id as "twitch_subscription_id!: String",
+                user_id as "user_id!: String",
+                subscription_type as "subscription_type!: String",
+                status as "status!: String",
+                created_at as "created_at!: chrono::NaiveDateTime",
+                updated_at as "updated_at!: chrono::NaiveDateTime"
             "#,
+            new_status,
+            now,
+            twitch_subscription_id
         )
-        .bind(new_status)
-        .bind(now)
-        .bind(twitch_subscription_id)
         .fetch_one(pool)
         .await
         .map_err(AppError::Database)

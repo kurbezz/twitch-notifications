@@ -29,7 +29,8 @@ impl NotificationQueueRepository {
         let next_attempt_at = task.next_attempt_at.unwrap_or(now);
         let max_attempts = task.max_attempts.unwrap_or(5);
 
-        let row = sqlx::query_as::<_, NotificationTask>(
+        sqlx::query_as!(
+            NotificationTask,
             r#"
             INSERT INTO notification_queue (
                 id,
@@ -51,47 +52,45 @@ impl NotificationQueueRepository {
                 updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING
-                id,
-                notification_log_id,
-                user_id,
-                notification_type,
-                content_json,
-                message,
-                destination_type,
-                destination_id,
-                webhook_url,
-                attempts,
-                max_attempts,
-                next_attempt_at,
-                expires_at,
-                last_error,
-                status,
-                created_at,
-                updated_at
+                id as "id!: String",
+                notification_log_id as "notification_log_id?: String",
+                user_id as "user_id!: String",
+                notification_type as "notification_type!: String",
+                content_json as "content_json!: String",
+                message as "message!: String",
+                destination_type as "destination_type!: String",
+                destination_id as "destination_id!: String",
+                webhook_url as "webhook_url?: String",
+                attempts as "attempts!: i32",
+                max_attempts as "max_attempts!: i32",
+                next_attempt_at as "next_attempt_at!: chrono::NaiveDateTime",
+                expires_at as "expires_at?: chrono::NaiveDateTime",
+                last_error as "last_error?: String",
+                status as "status!: String",
+                created_at as "created_at!: chrono::NaiveDateTime",
+                updated_at as "updated_at!: chrono::NaiveDateTime"
         "#,
+            id,
+            task.notification_log_id,
+            task.user_id,
+            task.notification_type,
+            task.content_json,
+            task.message,
+            task.destination_type,
+            task.destination_id,
+            task.webhook_url,
+            0i32, // attempts
+            max_attempts,
+            next_attempt_at,
+            task.expires_at,
+            None::<String>, // last_error
+            "pending",
+            now,
+            now
         )
-        .bind(id)
-        .bind(task.notification_log_id)
-        .bind(task.user_id)
-        .bind(task.notification_type)
-        .bind(task.content_json)
-        .bind(task.message)
-        .bind(task.destination_type)
-        .bind(task.destination_id)
-        .bind(task.webhook_url)
-        .bind(0i32) // attempts
-        .bind(max_attempts)
-        .bind(next_attempt_at)
-        .bind(task.expires_at)
-        .bind::<Option<String>>(None) // last_error
-        .bind("pending")
-        .bind(now)
-        .bind(now)
         .fetch_one(pool)
         .await
-        .map_err(AppError::Database)?;
-
-        Ok(row)
+        .map_err(AppError::Database)
     }
 
     /// Claim up to `limit` due (non-expired) tasks and return them.
@@ -112,7 +111,8 @@ impl NotificationQueueRepository {
         for _ in 0..(limit as usize) {
             let now = Utc::now().naive_utc();
 
-            let opt = sqlx::query_as::<_, NotificationTask>(
+            let opt = sqlx::query_as!(
+                NotificationTask,
                 r#"
                 UPDATE notification_queue
                 SET status = 'processing', updated_at = ?
@@ -125,26 +125,26 @@ impl NotificationQueueRepository {
                     LIMIT 1
                 )
                 RETURNING
-                    id,
-                    notification_log_id,
-                    user_id,
-                    notification_type,
-                    content_json,
-                    message,
-                    destination_type,
-                    destination_id,
-                    webhook_url,
-                    attempts,
-                    max_attempts,
-                    next_attempt_at,
-                    expires_at,
-                    last_error,
-                    status,
-                    created_at,
-                    updated_at
+                    id as "id!: String",
+                    notification_log_id as "notification_log_id?: String",
+                    user_id as "user_id!: String",
+                    notification_type as "notification_type!: String",
+                    content_json as "content_json!: String",
+                    message as "message!: String",
+                    destination_type as "destination_type!: String",
+                    destination_id as "destination_id!: String",
+                    webhook_url as "webhook_url?: String",
+                    attempts as "attempts!: i32",
+                    max_attempts as "max_attempts!: i32",
+                    next_attempt_at as "next_attempt_at!: chrono::NaiveDateTime",
+                    expires_at as "expires_at?: chrono::NaiveDateTime",
+                    last_error as "last_error?: String",
+                    status as "status!: String",
+                    created_at as "created_at!: chrono::NaiveDateTime",
+                    updated_at as "updated_at!: chrono::NaiveDateTime"
                 "#,
+                now
             )
-            .bind(now)
             .fetch_optional(pool)
             .await
             .map_err(AppError::Database)?;
@@ -162,38 +162,37 @@ impl NotificationQueueRepository {
     /// Mark a task as succeeded. Returns the updated task row.
     pub async fn mark_succeeded(pool: &SqlitePool, id: &str) -> AppResult<NotificationTask> {
         let now = Utc::now().naive_utc();
-        let row = sqlx::query_as::<_, NotificationTask>(
+        sqlx::query_as!(
+            NotificationTask,
             r#"
             UPDATE notification_queue
             SET status = 'succeeded', updated_at = ?
             WHERE id = ?
             RETURNING
-                id,
-                notification_log_id,
-                user_id,
-                notification_type,
-                content_json,
-                message,
-                destination_type,
-                destination_id,
-                webhook_url,
-                attempts,
-                max_attempts,
-                next_attempt_at,
-                expires_at,
-                last_error,
-                status,
-                created_at,
-                updated_at
+                id as "id!: String",
+                notification_log_id as "notification_log_id?: String",
+                user_id as "user_id!: String",
+                notification_type as "notification_type!: String",
+                content_json as "content_json!: String",
+                message as "message!: String",
+                destination_type as "destination_type!: String",
+                destination_id as "destination_id!: String",
+                webhook_url as "webhook_url?: String",
+                attempts as "attempts!: i32",
+                max_attempts as "max_attempts!: i32",
+                next_attempt_at as "next_attempt_at!: chrono::NaiveDateTime",
+                expires_at as "expires_at?: chrono::NaiveDateTime",
+                last_error as "last_error?: String",
+                status as "status!: String",
+                created_at as "created_at!: chrono::NaiveDateTime",
+                updated_at as "updated_at!: chrono::NaiveDateTime"
             "#,
+            now,
+            id
         )
-        .bind(now)
-        .bind(id)
         .fetch_one(pool)
         .await
-        .map_err(AppError::Database)?;
-
-        Ok(row)
+        .map_err(AppError::Database)
     }
 
     /// Increment attempts, set `next_attempt_at` and `last_error`. If the
@@ -207,7 +206,8 @@ impl NotificationQueueRepository {
         last_error: Option<String>,
     ) -> AppResult<NotificationTask> {
         let now = Utc::now().naive_utc();
-        let row = sqlx::query_as::<_, NotificationTask>(
+        sqlx::query_as!(
+            NotificationTask,
             r#"
                 UPDATE notification_queue
                 SET
@@ -218,34 +218,32 @@ impl NotificationQueueRepository {
                     updated_at = ?
                 WHERE id = ?
                 RETURNING
-                    id,
-                    notification_log_id,
-                    user_id,
-                    notification_type,
-                    content_json,
-                    message,
-                    destination_type,
-                    destination_id,
-                    webhook_url,
-                    attempts,
-                    max_attempts,
-                    next_attempt_at,
-                    expires_at,
-                    last_error,
-                    status,
-                    created_at,
-                    updated_at
+                    id as "id!: String",
+                    notification_log_id as "notification_log_id?: String",
+                    user_id as "user_id!: String",
+                    notification_type as "notification_type!: String",
+                    content_json as "content_json!: String",
+                    message as "message!: String",
+                    destination_type as "destination_type!: String",
+                    destination_id as "destination_id!: String",
+                    webhook_url as "webhook_url?: String",
+                    attempts as "attempts!: i32",
+                    max_attempts as "max_attempts!: i32",
+                    next_attempt_at as "next_attempt_at!: chrono::NaiveDateTime",
+                    expires_at as "expires_at?: chrono::NaiveDateTime",
+                    last_error as "last_error?: String",
+                    status as "status!: String",
+                    created_at as "created_at!: chrono::NaiveDateTime",
+                    updated_at as "updated_at!: chrono::NaiveDateTime"
                 "#,
+            next_attempt_at,
+            last_error,
+            now,
+            id
         )
-        .bind(next_attempt_at)
-        .bind(last_error)
-        .bind(now)
-        .bind(id)
         .fetch_one(pool)
         .await
-        .map_err(AppError::Database)?;
-
-        Ok(row)
+        .map_err(AppError::Database)
     }
 
     /// Mark the task as dead (moved to DLQ) and set the last error.
@@ -255,73 +253,71 @@ impl NotificationQueueRepository {
         last_error: Option<String>,
     ) -> AppResult<NotificationTask> {
         let now = Utc::now().naive_utc();
-        let row = sqlx::query_as::<_, NotificationTask>(
+        sqlx::query_as!(
+            NotificationTask,
             r#"
                 UPDATE notification_queue
                 SET status = 'dead', last_error = ?, updated_at = ?
                 WHERE id = ?
                 RETURNING
-                    id,
-                    notification_log_id,
-                    user_id,
-                    notification_type,
-                    content_json,
-                    message,
-                    destination_type,
-                    destination_id,
-                    webhook_url,
-                    attempts,
-                    max_attempts,
-                    next_attempt_at,
-                    expires_at,
-                    last_error,
-                    status,
-                    created_at,
-                    updated_at
+                    id as "id!: String",
+                    notification_log_id as "notification_log_id?: String",
+                    user_id as "user_id!: String",
+                    notification_type as "notification_type!: String",
+                    content_json as "content_json!: String",
+                    message as "message!: String",
+                    destination_type as "destination_type!: String",
+                    destination_id as "destination_id!: String",
+                    webhook_url as "webhook_url?: String",
+                    attempts as "attempts!: i32",
+                    max_attempts as "max_attempts!: i32",
+                    next_attempt_at as "next_attempt_at!: chrono::NaiveDateTime",
+                    expires_at as "expires_at?: chrono::NaiveDateTime",
+                    last_error as "last_error?: String",
+                    status as "status!: String",
+                    created_at as "created_at!: chrono::NaiveDateTime",
+                    updated_at as "updated_at!: chrono::NaiveDateTime"
                 "#,
+            last_error,
+            now,
+            id
         )
-        .bind(last_error)
-        .bind(now)
-        .bind(id)
         .fetch_one(pool)
         .await
-        .map_err(AppError::Database)?;
-
-        Ok(row)
+        .map_err(AppError::Database)
     }
 
     /// Fetch a task by id.
     #[allow(dead_code)]
     pub async fn find_by_id(pool: &SqlitePool, id: &str) -> AppResult<NotificationTask> {
-        let row = sqlx::query_as::<_, NotificationTask>(
+        sqlx::query_as!(
+            NotificationTask,
             r#"
                 SELECT
-                    id,
-                    notification_log_id,
-                    user_id,
-                    notification_type,
-                    content_json,
-                    message,
-                    destination_type,
-                    destination_id,
-                    webhook_url,
-                    attempts,
-                    max_attempts,
-                    next_attempt_at,
-                    last_error,
-                    status,
-                    created_at,
-                    updated_at,
-                    expires_at
+                    id as "id!: String",
+                    notification_log_id as "notification_log_id?: String",
+                    user_id as "user_id!: String",
+                    notification_type as "notification_type!: String",
+                    content_json as "content_json!: String",
+                    message as "message!: String",
+                    destination_type as "destination_type!: String",
+                    destination_id as "destination_id!: String",
+                    webhook_url as "webhook_url?: String",
+                    attempts as "attempts!: i32",
+                    max_attempts as "max_attempts!: i32",
+                    next_attempt_at as "next_attempt_at!: chrono::NaiveDateTime",
+                    expires_at as "expires_at?: chrono::NaiveDateTime",
+                    last_error as "last_error?: String",
+                    status as "status!: String",
+                    created_at as "created_at!: chrono::NaiveDateTime",
+                    updated_at as "updated_at!: chrono::NaiveDateTime"
                 FROM notification_queue
                 WHERE id = ?
                 "#,
+            id
         )
-        .bind(id)
         .fetch_one(pool)
         .await
-        .map_err(AppError::Database)?;
-
-        Ok(row)
+        .map_err(AppError::Database)
     }
 }

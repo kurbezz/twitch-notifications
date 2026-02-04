@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE users\n            SET\n                discord_user_id = ?,\n                discord_username = ?,\n                discord_avatar_url = ?,\n                updated_at = ?\n            WHERE id = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "e4be4754ce8ecf0d1ad51c48a550f91f4ea27c8c7fcb4705c7926a270b8efdad"
+}

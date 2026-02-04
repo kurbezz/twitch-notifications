@@ -1,5 +1,4 @@
-use chrono::NaiveDateTime;
-use sqlx::{Row, SqlitePool};
+use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::db::models::SettingsShare;
@@ -133,59 +132,40 @@ impl SettingsShareRepository {
         pool: &SqlitePool,
         owner_user_id: &str,
     ) -> AppResult<Vec<(SettingsShare, String, String)>> {
-        // We intentionally select explicit columns so they map cleanly into a `SettingsShare`
-        // and the additional grantee fields.
-        let rows = sqlx::query(
+        let rows = sqlx::query!(
             r#"
             SELECT
-                s.id as share_id,
-                s.owner_user_id as owner_user_id,
-                s.grantee_user_id as grantee_user_id,
-                s.can_manage as can_manage,
-                s.created_at as share_created_at,
-                s.updated_at as share_updated_at,
-                u.twitch_login as grantee_login,
-                u.twitch_display_name as grantee_display_name
+                s.id as "share_id!: String",
+                s.owner_user_id as "owner_user_id!: String",
+                s.grantee_user_id as "grantee_user_id!: String",
+                s.can_manage as "can_manage!: i64",
+                s.created_at as "share_created_at!: chrono::NaiveDateTime",
+                s.updated_at as "share_updated_at!: chrono::NaiveDateTime",
+                u.twitch_login as "grantee_login!: String",
+                u.twitch_display_name as "grantee_display_name!: String"
             FROM settings_shares s
             JOIN users u ON u.id = s.grantee_user_id
             WHERE s.owner_user_id = ?
             ORDER BY s.created_at DESC
             "#,
+            owner_user_id
         )
-        .bind(owner_user_id)
         .fetch_all(pool)
         .await
         .map_err(AppError::Database)?;
 
         let mut out = Vec::with_capacity(rows.len());
         for r in rows {
-            // Map query row into SettingsShare by reading columns from the row
-            let id: String = r.try_get("share_id").map_err(AppError::Database)?;
-            let owner_user_id_col: String =
-                r.try_get("owner_user_id").map_err(AppError::Database)?;
-            let grantee_user_id: String =
-                r.try_get("grantee_user_id").map_err(AppError::Database)?;
-            // SQLite represents booleans as integers (0/1)
-            let can_manage_i: i64 = r.try_get("can_manage").map_err(AppError::Database)?;
-            let created_at: NaiveDateTime =
-                r.try_get("share_created_at").map_err(AppError::Database)?;
-            let updated_at: NaiveDateTime =
-                r.try_get("share_updated_at").map_err(AppError::Database)?;
-            let login: String = r.try_get("grantee_login").map_err(AppError::Database)?;
-            let display: String = r
-                .try_get("grantee_display_name")
-                .map_err(AppError::Database)?;
-
             let share = SettingsShare {
-                id,
-                owner_user_id: owner_user_id_col,
-                grantee_user_id,
-                can_manage: can_manage_i != 0,
-                created_at,
-                updated_at,
+                id: r.share_id,
+                owner_user_id: r.owner_user_id,
+                grantee_user_id: r.grantee_user_id,
+                can_manage: r.can_manage != 0,
+                created_at: r.share_created_at,
+                updated_at: r.share_updated_at,
             };
 
-            out.push((share, login, display));
+            out.push((share, r.grantee_login, r.grantee_display_name));
         }
 
         Ok(out)
@@ -195,56 +175,40 @@ impl SettingsShareRepository {
         pool: &SqlitePool,
         grantee_user_id: &str,
     ) -> AppResult<Vec<(SettingsShare, String, String)>> {
-        // Use a dynamic query and manual row extraction similar to list_with_grantee_info
-        let rows = sqlx::query(
+        let rows = sqlx::query!(
             r#"
             SELECT
-                s.id as share_id,
-                s.owner_user_id as owner_user_id,
-                s.grantee_user_id as grantee_user_id,
-                s.can_manage as can_manage,
-                s.created_at as share_created_at,
-                s.updated_at as share_updated_at,
-                u.twitch_login as owner_login,
-                u.twitch_display_name as owner_display_name
+                s.id as "share_id!: String",
+                s.owner_user_id as "owner_user_id!: String",
+                s.grantee_user_id as "grantee_user_id!: String",
+                s.can_manage as "can_manage!: i64",
+                s.created_at as "share_created_at!: chrono::NaiveDateTime",
+                s.updated_at as "share_updated_at!: chrono::NaiveDateTime",
+                u.twitch_login as "owner_login!: String",
+                u.twitch_display_name as "owner_display_name!: String"
             FROM settings_shares s
             JOIN users u ON u.id = s.owner_user_id
             WHERE s.grantee_user_id = ?
             ORDER BY s.created_at DESC
             "#,
+            grantee_user_id
         )
-        .bind(grantee_user_id)
         .fetch_all(pool)
         .await
         .map_err(AppError::Database)?;
 
         let mut out = Vec::with_capacity(rows.len());
         for r in rows {
-            let id: String = r.try_get("share_id").map_err(AppError::Database)?;
-            let owner_user_id_col: String =
-                r.try_get("owner_user_id").map_err(AppError::Database)?;
-            let grantee_user_id_col: String =
-                r.try_get("grantee_user_id").map_err(AppError::Database)?;
-            let can_manage_i: i64 = r.try_get("can_manage").map_err(AppError::Database)?;
-            let created_at: NaiveDateTime =
-                r.try_get("share_created_at").map_err(AppError::Database)?;
-            let updated_at: NaiveDateTime =
-                r.try_get("share_updated_at").map_err(AppError::Database)?;
-            let login: String = r.try_get("owner_login").map_err(AppError::Database)?;
-            let display: String = r
-                .try_get("owner_display_name")
-                .map_err(AppError::Database)?;
-
             let share = SettingsShare {
-                id,
-                owner_user_id: owner_user_id_col,
-                grantee_user_id: grantee_user_id_col,
-                can_manage: can_manage_i != 0,
-                created_at,
-                updated_at,
+                id: r.share_id,
+                owner_user_id: r.owner_user_id,
+                grantee_user_id: r.grantee_user_id,
+                can_manage: r.can_manage != 0,
+                created_at: r.share_created_at,
+                updated_at: r.share_updated_at,
             };
 
-            out.push((share, login, display));
+            out.push((share, r.owner_login, r.owner_display_name));
         }
 
         Ok(out)

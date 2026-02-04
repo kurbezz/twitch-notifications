@@ -1,0 +1,122 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                UPDATE users\n                SET\n                    twitch_login = ?,\n                    twitch_display_name = ?,\n                    twitch_email = ?,\n                    twitch_profile_image_url = ?,\n                    updated_at = ?\n                WHERE id = ?\n                RETURNING\n                    id as \"id!: String\",\n                    twitch_id as \"twitch_id!: String\",\n                    twitch_login as \"twitch_login!: String\",\n                    twitch_display_name as \"twitch_display_name!: String\",\n                    twitch_email as \"twitch_email!: String\",\n                    twitch_profile_image_url as \"twitch_profile_image_url!: String\",\n                    twitch_access_token as \"twitch_access_token!: String\",\n                    twitch_refresh_token as \"twitch_refresh_token!: String\",\n                    twitch_token_expires_at as \"twitch_token_expires_at!: chrono::NaiveDateTime\",\n                    telegram_user_id as \"telegram_user_id?: String\",\n                    telegram_username as \"telegram_username?: String\",\n                    telegram_photo_url as \"telegram_photo_url?: String\",\n                    discord_user_id as \"discord_user_id?: String\",\n                    discord_username as \"discord_username?: String\",\n                    discord_avatar_url as \"discord_avatar_url?: String\",\n                    lang as \"lang?: String\",\n                    created_at as \"created_at!: chrono::NaiveDateTime\",\n                    updated_at as \"updated_at!: chrono::NaiveDateTime\"\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "twitch_id!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "twitch_login!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "twitch_display_name!: String",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "twitch_email!: String",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "twitch_profile_image_url!: String",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "twitch_access_token!: String",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "twitch_refresh_token!: String",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "twitch_token_expires_at!: chrono::NaiveDateTime",
+        "ordinal": 8,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "telegram_user_id?: String",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "telegram_username?: String",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "telegram_photo_url?: String",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "discord_user_id?: String",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "discord_username?: String",
+        "ordinal": 13,
+        "type_info": "Text"
+      },
+      {
+        "name": "discord_avatar_url?: String",
+        "ordinal": 14,
+        "type_info": "Text"
+      },
+      {
+        "name": "lang?: String",
+        "ordinal": 15,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: chrono::NaiveDateTime",
+        "ordinal": 16,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "updated_at!: chrono::NaiveDateTime",
+        "ordinal": 17,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "01018ff08983241748987603f5b273e58b494c6eb96145acb2b76c301bae9149"
+}

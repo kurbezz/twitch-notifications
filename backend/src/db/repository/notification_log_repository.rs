@@ -1,5 +1,5 @@
 use chrono::Utc;
-use sqlx::{Row, SqlitePool};
+use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::db::models::*;
@@ -153,26 +153,22 @@ impl NotificationLogRepository {
         pool: &SqlitePool,
         user_id: &str,
     ) -> AppResult<std::collections::HashMap<String, i64>> {
-        let rows = sqlx::query(
+        let rows = sqlx::query!(
             r#"
-            SELECT notification_type, COUNT(*) as count
+            SELECT notification_type, COUNT(*) as "count!: i64"
             FROM notification_history
             WHERE user_id = ?
             GROUP BY notification_type
             "#,
+            user_id
         )
-        .bind(user_id)
         .fetch_all(pool)
         .await
         .map_err(AppError::Database)?;
 
         let mut map = std::collections::HashMap::new();
         for row in rows {
-            let notification_type: String = row
-                .try_get("notification_type")
-                .map_err(AppError::Database)?;
-            let count: i64 = row.try_get::<i64, _>("count").map_err(AppError::Database)?;
-            map.insert(notification_type, count);
+            map.insert(row.notification_type, row.count);
         }
 
         Ok(map)
@@ -183,26 +179,22 @@ impl NotificationLogRepository {
         pool: &SqlitePool,
         user_id: &str,
     ) -> AppResult<std::collections::HashMap<String, i64>> {
-        let rows = sqlx::query(
+        let rows = sqlx::query!(
             r#"
-            SELECT destination_type, COUNT(*) as count
+            SELECT destination_type, COUNT(*) as "count!: i64"
             FROM notification_history
             WHERE user_id = ?
             GROUP BY destination_type
             "#,
+            user_id
         )
-        .bind(user_id)
         .fetch_all(pool)
         .await
         .map_err(AppError::Database)?;
 
         let mut map = std::collections::HashMap::new();
         for row in rows {
-            let destination_type: String = row
-                .try_get("destination_type")
-                .map_err(AppError::Database)?;
-            let count: i64 = row.try_get::<i64, _>("count").map_err(AppError::Database)?;
-            map.insert(destination_type, count);
+            map.insert(row.destination_type, row.count);
         }
 
         Ok(map)

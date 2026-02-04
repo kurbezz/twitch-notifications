@@ -1,6 +1,5 @@
 use chrono::Utc;
 
-use sqlx::Row;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
@@ -15,129 +14,102 @@ pub struct UserRepository;
 
 impl UserRepository {
     pub async fn find_by_id(pool: &SqlitePool, id: &str) -> AppResult<Option<User>> {
-        let row = sqlx::query(
+        sqlx::query_as!(
+            User,
             r#"
             SELECT
-                id, twitch_id, twitch_login, twitch_display_name,
-                twitch_email, twitch_profile_image_url,
-                twitch_access_token, twitch_refresh_token, twitch_token_expires_at,
-                telegram_user_id, telegram_username, telegram_photo_url,
-                discord_user_id, discord_username, discord_avatar_url,
-                lang,
-                created_at, updated_at
+                id as "id!: String",
+                twitch_id as "twitch_id!: String",
+                twitch_login as "twitch_login!: String",
+                twitch_display_name as "twitch_display_name!: String",
+                twitch_email as "twitch_email!: String",
+                twitch_profile_image_url as "twitch_profile_image_url!: String",
+                twitch_access_token as "twitch_access_token!: String",
+                twitch_refresh_token as "twitch_refresh_token!: String",
+                twitch_token_expires_at as "twitch_token_expires_at!: chrono::NaiveDateTime",
+                telegram_user_id as "telegram_user_id?: String",
+                telegram_username as "telegram_username?: String",
+                telegram_photo_url as "telegram_photo_url?: String",
+                discord_user_id as "discord_user_id?: String",
+                discord_username as "discord_username?: String",
+                discord_avatar_url as "discord_avatar_url?: String",
+                lang as "lang?: String",
+                created_at as "created_at!: chrono::NaiveDateTime",
+                updated_at as "updated_at!: chrono::NaiveDateTime"
             FROM users
             WHERE id = ?
             "#,
+            id
         )
-        .bind(id)
         .fetch_optional(pool)
         .await
-        .map_err(AppError::Database)?;
-
-        Ok(row.map(|r| User {
-            id: r.get("id"),
-            twitch_id: r.get("twitch_id"),
-            twitch_login: r.get("twitch_login"),
-            twitch_display_name: r.get("twitch_display_name"),
-            twitch_email: r.get("twitch_email"),
-            twitch_profile_image_url: r.get("twitch_profile_image_url"),
-            twitch_access_token: r.get("twitch_access_token"),
-            twitch_refresh_token: r.get("twitch_refresh_token"),
-            twitch_token_expires_at: r.get("twitch_token_expires_at"),
-            telegram_user_id: r.get("telegram_user_id"),
-            telegram_username: r.get("telegram_username"),
-            telegram_photo_url: r.get("telegram_photo_url"),
-            discord_user_id: r.get("discord_user_id"),
-            discord_username: r.get("discord_username"),
-            discord_avatar_url: r.get("discord_avatar_url"),
-            lang: r.get("lang"),
-            created_at: r.get("created_at"),
-            updated_at: r.get("updated_at"),
-        }))
+        .map_err(AppError::Database)
     }
 
     pub async fn find_by_twitch_id(pool: &SqlitePool, twitch_id: &str) -> AppResult<Option<User>> {
-        let row = sqlx::query(
+        sqlx::query_as!(
+            User,
             r#"
             SELECT
-                id, twitch_id, twitch_login, twitch_display_name,
-                twitch_email, twitch_profile_image_url,
-                twitch_access_token, twitch_refresh_token, twitch_token_expires_at,
-                telegram_user_id, telegram_username, telegram_photo_url,
-                discord_user_id, discord_username, discord_avatar_url,
-                lang,
-                created_at, updated_at
+                id as "id!: String",
+                twitch_id as "twitch_id!: String",
+                twitch_login as "twitch_login!: String",
+                twitch_display_name as "twitch_display_name!: String",
+                twitch_email as "twitch_email!: String",
+                twitch_profile_image_url as "twitch_profile_image_url!: String",
+                twitch_access_token as "twitch_access_token!: String",
+                twitch_refresh_token as "twitch_refresh_token!: String",
+                twitch_token_expires_at as "twitch_token_expires_at!: chrono::NaiveDateTime",
+                telegram_user_id as "telegram_user_id?: String",
+                telegram_username as "telegram_username?: String",
+                telegram_photo_url as "telegram_photo_url?: String",
+                discord_user_id as "discord_user_id?: String",
+                discord_username as "discord_username?: String",
+                discord_avatar_url as "discord_avatar_url?: String",
+                lang as "lang?: String",
+                created_at as "created_at!: chrono::NaiveDateTime",
+                updated_at as "updated_at!: chrono::NaiveDateTime"
             FROM users
             WHERE twitch_id = ?
             "#,
+            twitch_id
         )
-        .bind(twitch_id)
         .fetch_optional(pool)
         .await
-        .map_err(AppError::Database)?;
-
-        Ok(row.map(|r| User {
-            id: r.get("id"),
-            twitch_id: r.get("twitch_id"),
-            twitch_login: r.get("twitch_login"),
-            twitch_display_name: r.get("twitch_display_name"),
-            twitch_email: r.get("twitch_email"),
-            twitch_profile_image_url: r.get("twitch_profile_image_url"),
-            twitch_access_token: r.get("twitch_access_token"),
-            twitch_refresh_token: r.get("twitch_refresh_token"),
-            twitch_token_expires_at: r.get("twitch_token_expires_at"),
-            telegram_user_id: r.get("telegram_user_id"),
-            telegram_username: r.get("telegram_username"),
-            telegram_photo_url: r.get("telegram_photo_url"),
-            discord_user_id: r.get("discord_user_id"),
-            discord_username: r.get("discord_username"),
-            discord_avatar_url: r.get("discord_avatar_url"),
-            lang: r.get("lang"),
-            created_at: r.get("created_at"),
-            updated_at: r.get("updated_at"),
-        }))
+        .map_err(AppError::Database)
     }
 
     pub async fn find_by_login(pool: &SqlitePool, login: &str) -> AppResult<Option<User>> {
-        let row = sqlx::query(
+        sqlx::query_as!(
+            User,
             r#"
             SELECT
-                id, twitch_id, twitch_login, twitch_display_name,
-                twitch_email, twitch_profile_image_url,
-                twitch_access_token, twitch_refresh_token, twitch_token_expires_at,
-                telegram_user_id, telegram_username, telegram_photo_url,
-                discord_user_id, discord_username, discord_avatar_url,
-                lang,
-                created_at, updated_at
+                id as "id!: String",
+                twitch_id as "twitch_id!: String",
+                twitch_login as "twitch_login!: String",
+                twitch_display_name as "twitch_display_name!: String",
+                twitch_email as "twitch_email!: String",
+                twitch_profile_image_url as "twitch_profile_image_url!: String",
+                twitch_access_token as "twitch_access_token!: String",
+                twitch_refresh_token as "twitch_refresh_token!: String",
+                twitch_token_expires_at as "twitch_token_expires_at!: chrono::NaiveDateTime",
+                telegram_user_id as "telegram_user_id?: String",
+                telegram_username as "telegram_username?: String",
+                telegram_photo_url as "telegram_photo_url?: String",
+                discord_user_id as "discord_user_id?: String",
+                discord_username as "discord_username?: String",
+                discord_avatar_url as "discord_avatar_url?: String",
+                lang as "lang?: String",
+                created_at as "created_at!: chrono::NaiveDateTime",
+                updated_at as "updated_at!: chrono::NaiveDateTime"
             FROM users
             WHERE twitch_login = ?
             "#,
+            login
         )
-        .bind(login)
         .fetch_optional(pool)
         .await
-        .map_err(AppError::Database)?;
-
-        Ok(row.map(|r| User {
-            id: r.get("id"),
-            twitch_id: r.get("twitch_id"),
-            twitch_login: r.get("twitch_login"),
-            twitch_display_name: r.get("twitch_display_name"),
-            twitch_email: r.get("twitch_email"),
-            twitch_profile_image_url: r.get("twitch_profile_image_url"),
-            twitch_access_token: r.get("twitch_access_token"),
-            twitch_refresh_token: r.get("twitch_refresh_token"),
-            twitch_token_expires_at: r.get("twitch_token_expires_at"),
-            telegram_user_id: r.get("telegram_user_id"),
-            telegram_username: r.get("telegram_username"),
-            telegram_photo_url: r.get("telegram_photo_url"),
-            discord_user_id: r.get("discord_user_id"),
-            discord_username: r.get("discord_username"),
-            discord_avatar_url: r.get("discord_avatar_url"),
-            lang: r.get("lang"),
-            created_at: r.get("created_at"),
-            updated_at: r.get("updated_at"),
-        }))
+        .map_err(AppError::Database)
     }
 
     /// Search users by twitch login or display name (case-insensitive).
@@ -149,96 +121,72 @@ impl UserRepository {
 
         let pattern = format!("%{}%", query.to_lowercase());
 
-        let rows = sqlx::query(
+        sqlx::query_as!(
+            User,
             r#"
             SELECT
-                id, twitch_id, twitch_login, twitch_display_name,
-                twitch_email, twitch_profile_image_url,
-                twitch_access_token, twitch_refresh_token, twitch_token_expires_at,
-                telegram_user_id, telegram_username, telegram_photo_url,
-                discord_user_id, discord_username, discord_avatar_url,
-                lang,
-                created_at, updated_at
+                id as "id!: String",
+                twitch_id as "twitch_id!: String",
+                twitch_login as "twitch_login!: String",
+                twitch_display_name as "twitch_display_name!: String",
+                twitch_email as "twitch_email!: String",
+                twitch_profile_image_url as "twitch_profile_image_url!: String",
+                twitch_access_token as "twitch_access_token!: String",
+                twitch_refresh_token as "twitch_refresh_token!: String",
+                twitch_token_expires_at as "twitch_token_expires_at!: chrono::NaiveDateTime",
+                telegram_user_id as "telegram_user_id?: String",
+                telegram_username as "telegram_username?: String",
+                telegram_photo_url as "telegram_photo_url?: String",
+                discord_user_id as "discord_user_id?: String",
+                discord_username as "discord_username?: String",
+                discord_avatar_url as "discord_avatar_url?: String",
+                lang as "lang?: String",
+                created_at as "created_at!: chrono::NaiveDateTime",
+                updated_at as "updated_at!: chrono::NaiveDateTime"
             FROM users
             WHERE LOWER(twitch_login) LIKE ? OR LOWER(twitch_display_name) LIKE ?
             ORDER BY twitch_login ASC
             LIMIT ?
             "#,
+            pattern,
+            pattern,
+            limit
         )
-        .bind(&pattern)
-        .bind(&pattern)
-        .bind(limit)
         .fetch_all(pool)
         .await
-        .map_err(AppError::Database)?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| User {
-                id: r.get("id"),
-                twitch_id: r.get("twitch_id"),
-                twitch_login: r.get("twitch_login"),
-                twitch_display_name: r.get("twitch_display_name"),
-                twitch_email: r.get("twitch_email"),
-                twitch_profile_image_url: r.get("twitch_profile_image_url"),
-                twitch_access_token: r.get("twitch_access_token"),
-                twitch_refresh_token: r.get("twitch_refresh_token"),
-                twitch_token_expires_at: r.get("twitch_token_expires_at"),
-                telegram_user_id: r.get("telegram_user_id"),
-                telegram_username: r.get("telegram_username"),
-                telegram_photo_url: r.get("telegram_photo_url"),
-                discord_user_id: r.get("discord_user_id"),
-                discord_username: r.get("discord_username"),
-                discord_avatar_url: r.get("discord_avatar_url"),
-                lang: r.get("lang"),
-                created_at: r.get("created_at"),
-                updated_at: r.get("updated_at"),
-            })
-            .collect())
+        .map_err(AppError::Database)
     }
 
     pub async fn list_all(pool: &SqlitePool) -> AppResult<Vec<User>> {
-        let rows = sqlx::query(
+        sqlx::query_as!(
+            User,
             r#"
             SELECT
-                id, twitch_id, twitch_login, twitch_display_name,
-                twitch_email, twitch_profile_image_url,
-                twitch_access_token, twitch_refresh_token, twitch_token_expires_at,
-                telegram_user_id, telegram_username, telegram_photo_url,
-                discord_user_id, discord_username, discord_avatar_url,
-                lang,
-                created_at, updated_at
+                id as "id!: String",
+                twitch_id as "twitch_id!: String",
+                twitch_login as "twitch_login!: String",
+                twitch_display_name as "twitch_display_name!: String",
+                twitch_email as "twitch_email!: String",
+                twitch_profile_image_url as "twitch_profile_image_url!: String",
+                twitch_access_token as "twitch_access_token!: String",
+                twitch_refresh_token as "twitch_refresh_token!: String",
+                twitch_token_expires_at as "twitch_token_expires_at!: chrono::NaiveDateTime",
+                telegram_user_id as "telegram_user_id?: String",
+                telegram_username as "telegram_username?: String",
+                telegram_photo_url as "telegram_photo_url?: String",
+                discord_user_id as "discord_user_id?: String",
+                discord_username as "discord_username?: String",
+                discord_avatar_url as "discord_avatar_url?: String",
+                lang as "lang?: String",
+                created_at as "created_at!: chrono::NaiveDateTime",
+                updated_at as "updated_at!: chrono::NaiveDateTime"
             FROM users
             ORDER BY created_at DESC
-            "#,
+            "#
         )
         .fetch_all(pool)
         .await
-        .map_err(AppError::Database)?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| User {
-                id: r.get("id"),
-                twitch_id: r.get("twitch_id"),
-                twitch_login: r.get("twitch_login"),
-                twitch_display_name: r.get("twitch_display_name"),
-                twitch_email: r.get("twitch_email"),
-                twitch_profile_image_url: r.get("twitch_profile_image_url"),
-                twitch_access_token: r.get("twitch_access_token"),
-                twitch_refresh_token: r.get("twitch_refresh_token"),
-                twitch_token_expires_at: r.get("twitch_token_expires_at"),
-                telegram_user_id: r.get("telegram_user_id"),
-                telegram_username: r.get("telegram_username"),
-                telegram_photo_url: r.get("telegram_photo_url"),
-                discord_user_id: r.get("discord_user_id"),
-                discord_username: r.get("discord_username"),
-                discord_avatar_url: r.get("discord_avatar_url"),
-                lang: r.get("lang"),
-                created_at: r.get("created_at"),
-                updated_at: r.get("updated_at"),
-            })
-            .collect())
+        .map_err(AppError::Database)
     }
 
     pub async fn update_tokens(
@@ -249,7 +197,7 @@ impl UserRepository {
         token_expires_at: chrono::NaiveDateTime,
     ) -> AppResult<()> {
         let now = Utc::now();
-        sqlx::query(
+        sqlx::query!(
             r#"
             UPDATE users
             SET
@@ -259,12 +207,12 @@ impl UserRepository {
                 updated_at = ?
             WHERE id = ?
             "#,
+            access_token,
+            refresh_token,
+            token_expires_at,
+            now,
+            user_id
         )
-        .bind(access_token)
-        .bind(refresh_token)
-        .bind(token_expires_at)
-        .bind(now)
-        .bind(user_id)
         .execute(pool)
         .await
         .map_err(AppError::Database)?;
@@ -302,7 +250,8 @@ impl UserRepository {
             )
             .await?;
 
-            sqlx::query(
+            sqlx::query_as!(
+                User,
                 r#"
                 UPDATE users
                 SET
@@ -313,27 +262,39 @@ impl UserRepository {
                     updated_at = ?
                 WHERE id = ?
                 RETURNING
-                    id, twitch_id, twitch_login, twitch_display_name,
-                    twitch_email, twitch_profile_image_url,
-                    twitch_access_token, twitch_refresh_token, twitch_token_expires_at,
-                    telegram_user_id, telegram_username, telegram_photo_url,
-                    discord_user_id, discord_username, discord_avatar_url,
-                    lang,
-                    created_at, updated_at
+                    id as "id!: String",
+                    twitch_id as "twitch_id!: String",
+                    twitch_login as "twitch_login!: String",
+                    twitch_display_name as "twitch_display_name!: String",
+                    twitch_email as "twitch_email!: String",
+                    twitch_profile_image_url as "twitch_profile_image_url!: String",
+                    twitch_access_token as "twitch_access_token!: String",
+                    twitch_refresh_token as "twitch_refresh_token!: String",
+                    twitch_token_expires_at as "twitch_token_expires_at!: chrono::NaiveDateTime",
+                    telegram_user_id as "telegram_user_id?: String",
+                    telegram_username as "telegram_username?: String",
+                    telegram_photo_url as "telegram_photo_url?: String",
+                    discord_user_id as "discord_user_id?: String",
+                    discord_username as "discord_username?: String",
+                    discord_avatar_url as "discord_avatar_url?: String",
+                    lang as "lang?: String",
+                    created_at as "created_at!: chrono::NaiveDateTime",
+                    updated_at as "updated_at!: chrono::NaiveDateTime"
                 "#,
+                twitch_login,
+                twitch_display_name,
+                twitch_email,
+                twitch_profile_image_url,
+                now,
+                user.id
             )
-            .bind(twitch_login)
-            .bind(twitch_display_name)
-            .bind(twitch_email)
-            .bind(twitch_profile_image_url)
-            .bind(now)
-            .bind(&user.id)
             .fetch_one(pool)
             .await
             .map_err(AppError::Database)?
         } else {
             // Create new user
-            sqlx::query(
+            sqlx::query_as!(
+                User,
                 r#"
                 INSERT INTO users (
                     id, twitch_id, twitch_login, twitch_display_name,
@@ -346,58 +307,50 @@ impl UserRepository {
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING
-                    id, twitch_id, twitch_login, twitch_display_name,
-                    twitch_email, twitch_profile_image_url,
-                    twitch_access_token, twitch_refresh_token, twitch_token_expires_at,
-                    telegram_user_id, telegram_username, telegram_photo_url,
-                    discord_user_id, discord_username, discord_avatar_url,
-                    lang,
-                    created_at, updated_at
+                    id as "id!: String",
+                    twitch_id as "twitch_id!: String",
+                    twitch_login as "twitch_login!: String",
+                    twitch_display_name as "twitch_display_name!: String",
+                    twitch_email as "twitch_email!: String",
+                    twitch_profile_image_url as "twitch_profile_image_url!: String",
+                    twitch_access_token as "twitch_access_token!: String",
+                    twitch_refresh_token as "twitch_refresh_token!: String",
+                    twitch_token_expires_at as "twitch_token_expires_at!: chrono::NaiveDateTime",
+                    telegram_user_id as "telegram_user_id?: String",
+                    telegram_username as "telegram_username?: String",
+                    telegram_photo_url as "telegram_photo_url?: String",
+                    discord_user_id as "discord_user_id?: String",
+                    discord_username as "discord_username?: String",
+                    discord_avatar_url as "discord_avatar_url?: String",
+                    lang as "lang?: String",
+                    created_at as "created_at!: chrono::NaiveDateTime",
+                    updated_at as "updated_at!: chrono::NaiveDateTime"
                 "#,
+                id,
+                twitch_id,
+                twitch_login,
+                twitch_display_name,
+                twitch_email,
+                twitch_profile_image_url,
+                twitch_access_token,
+                twitch_refresh_token,
+                twitch_token_expires_at,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                lang,
+                now,
+                now
             )
-            .bind(&id)
-            .bind(twitch_id)
-            .bind(twitch_login)
-            .bind(twitch_display_name)
-            .bind(twitch_email)
-            .bind(twitch_profile_image_url)
-            .bind(twitch_access_token)
-            .bind(twitch_refresh_token)
-            .bind(twitch_token_expires_at)
-            .bind(None::<String>)
-            .bind(None::<String>)
-            .bind(None::<String>)
-            .bind(None::<String>)
-            .bind(None::<String>)
-            .bind(None::<String>)
-            .bind(lang)
-            .bind(now)
-            .bind(now)
             .fetch_one(pool)
             .await
             .map_err(AppError::Database)?
         };
 
-        Ok(User {
-            id: result_user.get("id"),
-            twitch_id: result_user.get("twitch_id"),
-            twitch_login: result_user.get("twitch_login"),
-            twitch_display_name: result_user.get("twitch_display_name"),
-            twitch_email: result_user.get("twitch_email"),
-            twitch_profile_image_url: result_user.get("twitch_profile_image_url"),
-            twitch_access_token: result_user.get("twitch_access_token"),
-            twitch_refresh_token: result_user.get("twitch_refresh_token"),
-            twitch_token_expires_at: result_user.get("twitch_token_expires_at"),
-            telegram_user_id: result_user.get("telegram_user_id"),
-            telegram_username: result_user.get("telegram_username"),
-            telegram_photo_url: result_user.get("telegram_photo_url"),
-            discord_user_id: result_user.get("discord_user_id"),
-            discord_username: result_user.get("discord_username"),
-            discord_avatar_url: result_user.get("discord_avatar_url"),
-            lang: result_user.get("lang"),
-            created_at: result_user.get("created_at"),
-            updated_at: result_user.get("updated_at"),
-        })
+        Ok(result_user)
     }
 
     pub async fn set_telegram_info(
@@ -408,7 +361,7 @@ impl UserRepository {
         telegram_photo_url: Option<&str>,
     ) -> AppResult<()> {
         let now = Utc::now();
-        sqlx::query(
+        sqlx::query!(
             r#"
             UPDATE users
             SET
@@ -418,12 +371,12 @@ impl UserRepository {
                 updated_at = ?
             WHERE id = ?
             "#,
+            telegram_user_id,
+            telegram_username,
+            telegram_photo_url,
+            now,
+            user_id
         )
-        .bind(telegram_user_id)
-        .bind(telegram_username)
-        .bind(telegram_photo_url)
-        .bind(now)
-        .bind(user_id)
         .execute(pool)
         .await
         .map_err(AppError::Database)?;
@@ -432,7 +385,7 @@ impl UserRepository {
 
     pub async fn set_lang(pool: &SqlitePool, user_id: &str, lang: Option<&str>) -> AppResult<()> {
         let now = Utc::now();
-        sqlx::query(
+        sqlx::query!(
             r#"
             UPDATE users
             SET
@@ -440,10 +393,10 @@ impl UserRepository {
                 updated_at = ?
             WHERE id = ?
             "#,
+            lang,
+            now,
+            user_id
         )
-        .bind(lang)
-        .bind(now)
-        .bind(user_id)
         .execute(pool)
         .await
         .map_err(AppError::Database)?;
@@ -452,7 +405,7 @@ impl UserRepository {
 
     pub async fn clear_telegram_info(pool: &SqlitePool, user_id: &str) -> AppResult<()> {
         let now = Utc::now();
-        sqlx::query(
+        sqlx::query!(
             r#"
             UPDATE users
             SET
@@ -462,9 +415,9 @@ impl UserRepository {
                 updated_at = ?
             WHERE id = ?
             "#,
+            now,
+            user_id
         )
-        .bind(now)
-        .bind(user_id)
         .execute(pool)
         .await
         .map_err(AppError::Database)?;
@@ -480,7 +433,7 @@ impl UserRepository {
         discord_avatar_url: &str,
     ) -> AppResult<()> {
         let now = Utc::now();
-        sqlx::query(
+        sqlx::query!(
             r#"
             UPDATE users
             SET
@@ -490,12 +443,12 @@ impl UserRepository {
                 updated_at = ?
             WHERE id = ?
             "#,
+            discord_user_id,
+            discord_username,
+            discord_avatar_url,
+            now,
+            user_id
         )
-        .bind(discord_user_id)
-        .bind(discord_username)
-        .bind(discord_avatar_url)
-        .bind(now)
-        .bind(user_id)
         .execute(pool)
         .await
         .map_err(AppError::Database)?;
@@ -505,7 +458,7 @@ impl UserRepository {
 
     pub async fn clear_discord_info(pool: &SqlitePool, user_id: &str) -> AppResult<()> {
         let now = Utc::now();
-        sqlx::query(
+        sqlx::query!(
             r#"
             UPDATE users
             SET
@@ -515,9 +468,9 @@ impl UserRepository {
                 updated_at = ?
             WHERE id = ?
             "#,
+            now,
+            user_id
         )
-        .bind(now)
-        .bind(user_id)
         .execute(pool)
         .await
         .map_err(AppError::Database)?;

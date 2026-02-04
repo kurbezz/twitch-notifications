@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                s.id as \"share_id!: String\",\n                s.owner_user_id as \"owner_user_id!: String\",\n                s.grantee_user_id as \"grantee_user_id!: String\",\n                s.can_manage as \"can_manage!: i64\",\n                s.created_at as \"share_created_at!: chrono::NaiveDateTime\",\n                s.updated_at as \"share_updated_at!: chrono::NaiveDateTime\",\n                u.twitch_login as \"owner_login!: String\",\n                u.twitch_display_name as \"owner_display_name!: String\"\n            FROM settings_shares s\n            JOIN users u ON u.id = s.owner_user_id\n            WHERE s.grantee_user_id = ?\n            ORDER BY s.created_at DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "share_id!: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "owner_user_id!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "grantee_user_id!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "can_manage!: i64",
+        "ordinal": 3,
+        "type_info": "Bool"
+      },
+      {
+        "name": "share_created_at!: chrono::NaiveDateTime",
+        "ordinal": 4,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "share_updated_at!: chrono::NaiveDateTime",
+        "ordinal": 5,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "owner_login!: String",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "owner_display_name!: String",
+        "ordinal": 7,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "907da1c7ec243445c5230d60deed12ac240242de1c4c5299b47d98ed8c43985a"
+}

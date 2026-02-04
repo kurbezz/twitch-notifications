@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT destination_type, COUNT(*) as \"count!: i64\"\n            FROM notification_history\n            WHERE user_id = ?\n            GROUP BY destination_type\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "destination_type",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "count!: i64",
+        "ordinal": 1,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "4b7015c141ec6a328dcc978173c15dc7df409d246cd86ca135adb83c7af985cb"
+}

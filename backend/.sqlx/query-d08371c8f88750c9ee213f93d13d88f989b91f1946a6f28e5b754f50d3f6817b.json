@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE users\n            SET\n                twitch_access_token = ?,\n                twitch_refresh_token = ?,\n                twitch_token_expires_at = ?,\n                updated_at = ?\n            WHERE id = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "d08371c8f88750c9ee213f93d13d88f989b91f1946a6f28e5b754f50d3f6817b"
+}

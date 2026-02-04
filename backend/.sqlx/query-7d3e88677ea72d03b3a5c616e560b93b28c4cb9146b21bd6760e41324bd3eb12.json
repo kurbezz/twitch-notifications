@@ -1,0 +1,116 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                UPDATE notification_queue\n                SET status = 'dead', last_error = ?, updated_at = ?\n                WHERE id = ?\n                RETURNING\n                    id as \"id!: String\",\n                    notification_log_id as \"notification_log_id?: String\",\n                    user_id as \"user_id!: String\",\n                    notification_type as \"notification_type!: String\",\n                    content_json as \"content_json!: String\",\n                    message as \"message!: String\",\n                    destination_type as \"destination_type!: String\",\n                    destination_id as \"destination_id!: String\",\n                    webhook_url as \"webhook_url?: String\",\n                    attempts as \"attempts!: i32\",\n                    max_attempts as \"max_attempts!: i32\",\n                    next_attempt_at as \"next_attempt_at!: chrono::NaiveDateTime\",\n                    expires_at as \"expires_at?: chrono::NaiveDateTime\",\n                    last_error as \"last_error?: String\",\n                    status as \"status!: String\",\n                    created_at as \"created_at!: chrono::NaiveDateTime\",\n                    updated_at as \"updated_at!: chrono::NaiveDateTime\"\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "notification_log_id?: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "user_id!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "notification_type!: String",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "content_json!: String",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "message!: String",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "destination_type!: String",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "destination_id!: String",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "webhook_url?: String",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "attempts!: i32",
+        "ordinal": 9,
+        "type_info": "Int64"
+      },
+      {
+        "name": "max_attempts!: i32",
+        "ordinal": 10,
+        "type_info": "Int64"
+      },
+      {
+        "name": "next_attempt_at!: chrono::NaiveDateTime",
+        "ordinal": 11,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "expires_at?: chrono::NaiveDateTime",
+        "ordinal": 12,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "last_error?: String",
+        "ordinal": 13,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!: String",
+        "ordinal": 14,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: chrono::NaiveDateTime",
+        "ordinal": 15,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "updated_at!: chrono::NaiveDateTime",
+        "ordinal": 16,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "7d3e88677ea72d03b3a5c616e560b93b28c4cb9146b21bd6760e41324bd3eb12"
+}
