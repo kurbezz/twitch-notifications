@@ -103,7 +103,36 @@ impl EventSubSubscriptionRepository {
         .map_err(AppError::Database)
     }
 
-    // update_status removed - unused
+    /// Update subscription status
+    pub async fn update_status(
+        pool: &SqlitePool,
+        twitch_subscription_id: &str,
+        new_status: &str,
+    ) -> AppResult<EventSubSubscription> {
+        let now = Utc::now().naive_utc();
+
+        sqlx::query_as::<_, EventSubSubscription>(
+            r#"
+            UPDATE eventsub_subscriptions
+            SET status = ?, updated_at = ?
+            WHERE twitch_subscription_id = ?
+            RETURNING
+                id,
+                twitch_subscription_id,
+                user_id,
+                subscription_type,
+                status,
+                created_at,
+                updated_at
+            "#,
+        )
+        .bind(new_status)
+        .bind(now)
+        .bind(twitch_subscription_id)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::Database)
+    }
 
     /// Delete a subscription
     pub async fn delete(pool: &SqlitePool, id: &str) -> AppResult<()> {

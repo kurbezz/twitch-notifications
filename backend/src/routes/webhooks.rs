@@ -155,8 +155,58 @@ async fn handle_twitch_webhook(
                 .ok_or_else(|| AppError::BadRequest("Missing challenge".to_string()))?;
 
             tracing::info!(
-                "Webhook verification successful for subscription: {}",
-                payload.subscription.id
+                "Webhook verification challenge received: subscription_id={}, subscription_type={}, challenge={}",
+                payload.subscription.id,
+                payload.subscription.subscription_type,
+                challenge
+            );
+
+            // Try to update subscription status in DB if it exists
+            if let Ok(Some(db_sub)) =
+                crate::db::EventSubSubscriptionRepository::find_by_twitch_subscription_id(
+                    &state.db,
+                    &payload.subscription.id,
+                )
+                .await
+            {
+                tracing::info!(
+                    "Found subscription in DB for verification: id={}, current_status={}",
+                    db_sub.id,
+                    db_sub.status
+                );
+
+                // Update status to enabled after successful verification response
+                // Note: Twitch will send another message with status='enabled' after verification,
+                // but we can optimistically update it here since we're responding correctly
+                if let Ok(updated) = crate::db::EventSubSubscriptionRepository::update_status(
+                    &state.db,
+                    &payload.subscription.id,
+                    "enabled",
+                )
+                .await
+                {
+                    tracing::info!(
+                        "Updated subscription status to 'enabled' after successful verification: subscription_id={}, type={}",
+                        updated.twitch_subscription_id,
+                        updated.subscription_type
+                    );
+                } else {
+                    tracing::warn!(
+                        "Failed to update subscription status in DB after verification: subscription_id={}",
+                        payload.subscription.id
+                    );
+                }
+            } else {
+                tracing::warn!(
+                    "Webhook verification received for subscription {} but not found in DB. This may indicate a sync issue.",
+                    payload.subscription.id
+                );
+            }
+
+            tracing::info!(
+                "Responding to webhook verification challenge for subscription: {} (type: {})",
+                payload.subscription.id,
+                payload.subscription.subscription_type
             );
 
             Ok((StatusCode::OK, challenge))
@@ -246,6 +296,31 @@ fn get_header(headers: &HeaderMap, name: &str) -> AppResult<String> {
 // ============================================================================
 
 async fn handle_notification(state: &Arc<AppState>, payload: &EventSubPayload) -> AppResult<()> {
+    // Update subscription status to 'enabled' if we receive a notification
+    // (this confirms the subscription is active)
+    if let Ok(Some(db_sub)) =
+        crate::db::EventSubSubscriptionRepository::find_by_twitch_subscription_id(
+            &state.db,
+            &payload.subscription.id,
+        )
+        .await
+    {
+        if db_sub.status != "enabled" {
+            tracing::info!(
+                "Received notification for subscription with status '{}', updating to 'enabled': subscription_id={}, type={}",
+                db_sub.status,
+                payload.subscription.id,
+                payload.subscription.subscription_type
+            );
+            let _ = crate::db::EventSubSubscriptionRepository::update_status(
+                &state.db,
+                &payload.subscription.id,
+                "enabled",
+            )
+            .await;
+        }
+    }
+
     let event = payload
         .event
         .as_ref()

@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use chrono::Utc;
 use serde_json::Value;
 use tracing::{info, warn};
 
@@ -55,10 +56,65 @@ impl SubscriptionManager {
         );
 
         for sub in &existing_db_subs {
+            let status_msg = if sub.status == "enabled" {
+                "✓ enabled".to_string()
+            } else if sub.status == "webhook_callback_verification_pending" {
+                "⚠ webhook_callback_verification_pending (webhook verification not completed)"
+                    .to_string()
+            } else {
+                format!("⚠ {}", sub.status)
+            };
+
             info!(
                 "Existing subscription: type={}, twitch_id={}, status={}",
-                sub.subscription_type, sub.twitch_subscription_id, sub.status
+                sub.subscription_type, sub.twitch_subscription_id, status_msg
             );
+
+            if sub.status == "webhook_callback_verification_pending" {
+                warn!(
+                    "Subscription {} (type={}) is in 'webhook_callback_verification_pending' status. \
+                    This means Twitch cannot verify the webhook URL. \
+                    Possible causes: \
+                    1) Webhook URL is not accessible from internet, \
+                    2) SSL certificate issues, \
+                    3) Firewall blocking Twitch IPs, \
+                    4) Webhook endpoint not responding correctly. \
+                    Events will NOT be received until verification is completed.",
+                    sub.twitch_subscription_id,
+                    sub.subscription_type
+                );
+            } else if sub.status != "enabled" {
+                warn!(
+                    "Subscription {} (type={}) has status '{}' instead of 'enabled'. Events may not be received.",
+                    sub.twitch_subscription_id,
+                    sub.subscription_type,
+                    sub.status
+                );
+            }
+        }
+
+        // Check if critical subscription (stream.online) is enabled
+        let stream_online_enabled = existing_db_subs
+            .iter()
+            .any(|s| s.subscription_type == "stream.online" && s.status == "enabled");
+
+        if !stream_online_enabled {
+            let pending = existing_db_subs
+                .iter()
+                .find(|s| s.subscription_type == "stream.online");
+
+            if let Some(pending_sub) = pending {
+                warn!(
+                    "⚠ CRITICAL: stream.online subscription exists but is NOT enabled (status: {}). \
+                    Stream start notifications will NOT work until this subscription is verified and enabled by Twitch.",
+                    pending_sub.status
+                );
+            } else {
+                warn!(
+                    "⚠ CRITICAL: No stream.online subscription found for user {}. Stream start notifications will NOT work.",
+                    user.id
+                );
+            }
         }
 
         // 1) Remove subscriptions that exist in DB but are not required anymore
@@ -96,16 +152,129 @@ impl SubscriptionManager {
             }
         }
 
-        // 2) Create missing required subscriptions
+        // 2) Handle subscriptions that need recreation (pending verification for too long)
+        // Recreate subscriptions that are stuck in webhook_callback_verification_pending status
+        let now = Utc::now().naive_utc();
+        let verification_timeout_minutes = 10;
+        let verification_timeout = chrono::Duration::minutes(verification_timeout_minutes);
+
+        for db_sub in &existing_db_subs {
+            if db_sub.status == "webhook_callback_verification_pending" {
+                let age = now.signed_duration_since(db_sub.created_at);
+
+                if age > verification_timeout {
+                    warn!(
+                        "Subscription {} (type={}) has been in 'webhook_callback_verification_pending' status for {} minutes. \
+                        Deleting and recreating it.",
+                        db_sub.twitch_subscription_id,
+                        db_sub.subscription_type,
+                        age.num_minutes()
+                    );
+
+                    // Delete from Twitch
+                    if let Err(e) = state
+                        .twitch
+                        .delete_eventsub_subscription(&db_sub.twitch_subscription_id)
+                        .await
+                    {
+                        warn!(
+                            "Failed to delete pending subscription {} on Twitch: {}. Will still try to delete from DB.",
+                            db_sub.twitch_subscription_id,
+                            e
+                        );
+                    }
+
+                    // Delete from DB
+                    if let Err(e) =
+                        EventSubSubscriptionRepository::delete(&state.db, &db_sub.id).await
+                    {
+                        warn!(
+                            "Failed to delete pending subscription {} from DB: {}",
+                            db_sub.id, e
+                        );
+                    } else {
+                        info!(
+                            "Deleted pending subscription {} (type={}) for recreation",
+                            db_sub.twitch_subscription_id, db_sub.subscription_type
+                        );
+                    }
+                } else {
+                    info!(
+                        "Subscription {} (type={}) is in 'webhook_callback_verification_pending' but only {} minutes old. \
+                        Waiting for verification (will retry after {} minutes).",
+                        db_sub.twitch_subscription_id,
+                        db_sub.subscription_type,
+                        age.num_minutes(),
+                        verification_timeout_minutes
+                    );
+                }
+            }
+        }
+
+        // Refresh the list after deletions
+        let existing_db_subs_after_cleanup =
+            EventSubSubscriptionRepository::find_by_user_id(&state.db, &user.id)
+                .await
+                .unwrap_or_else(|e| {
+                    warn!(
+                        "Failed to reload EventSub subscriptions after cleanup for user {}: {}",
+                        user.id, e
+                    );
+                    Vec::new()
+                });
+
+        // 3) Create missing required subscriptions
 
         for req in required {
-            // Skip if already in DB
-            if existing_db_subs.iter().any(|s| s.subscription_type == req) {
+            // Skip if already in DB with enabled status
+            if existing_db_subs_after_cleanup
+                .iter()
+                .any(|s| s.subscription_type == req && s.status == "enabled")
+            {
                 info!(
-                    "Subscription {} already exists in DB for user {}, skipping creation",
+                    "Subscription {} already exists and is enabled in DB for user {}, skipping creation",
                     req, user.id
                 );
                 continue;
+            }
+
+            // If exists but not enabled, delete it first (it will be recreated below)
+            if let Some(existing) = existing_db_subs_after_cleanup
+                .iter()
+                .find(|s| s.subscription_type == req)
+            {
+                warn!(
+                    "Subscription {} exists but has status '{}' (not enabled). Deleting and recreating.",
+                    req,
+                    existing.status
+                );
+
+                // Delete from Twitch
+                if let Err(e) = state
+                    .twitch
+                    .delete_eventsub_subscription(&existing.twitch_subscription_id)
+                    .await
+                {
+                    warn!(
+                        "Failed to delete non-enabled subscription {} on Twitch: {}",
+                        existing.twitch_subscription_id, e
+                    );
+                }
+
+                // Delete from DB
+                if let Err(e) =
+                    EventSubSubscriptionRepository::delete(&state.db, &existing.id).await
+                {
+                    warn!(
+                        "Failed to delete non-enabled subscription {} from DB: {}",
+                        existing.id, e
+                    );
+                } else {
+                    info!(
+                        "Deleted non-enabled subscription {} (type={}) for recreation",
+                        existing.twitch_subscription_id, existing.subscription_type
+                    );
+                }
             }
 
             info!(
