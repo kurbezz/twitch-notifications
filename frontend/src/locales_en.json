@@ -338,6 +338,7 @@
     },
     "placeholder": "Search by nick (e.g. ninja)",
     "search_min_length": "Enter at least 2 characters",
+    "search_none": "No users found",
     "clear": "Clear",
     "can_manage": "Can edit",
     "add": "Add",
