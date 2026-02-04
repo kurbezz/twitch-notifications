@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::error::{AppError, AppResult};
 
@@ -138,6 +139,34 @@ impl DiscordService {
 
     fn auth_header(&self) -> String {
         format!("Bot {}", self.bot_token)
+    }
+
+    /// Parse retry_after from a Discord rate limit error response
+    fn parse_retry_after(error_text: &str) -> Option<f64> {
+        if let Ok(json) = serde_json::from_str::<Value>(error_text) {
+            if let Some(retry_after) = json.get("retry_after") {
+                return retry_after.as_f64();
+            }
+        }
+        None
+    }
+
+    /// Handle rate limiting by waiting for the retry_after duration
+    async fn handle_rate_limit(error_text: &str) -> AppResult<()> {
+        if let Some(retry_after) = Self::parse_retry_after(error_text) {
+            let wait_seconds = (retry_after.ceil() as u64) + 1; // Add 1 second buffer
+            tracing::warn!(
+                "Discord rate limit hit, waiting {} seconds before retry",
+                wait_seconds
+            );
+            tokio::time::sleep(tokio::time::Duration::from_secs(wait_seconds)).await;
+            Ok(())
+        } else {
+            Err(AppError::Discord(format!(
+                "Rate limited but could not parse retry_after: {}",
+                error_text
+            )))
+        }
     }
 
     /// Send a message to a channel
@@ -470,6 +499,7 @@ impl DiscordService {
     }
 
     /// Create a scheduled event in a guild
+    /// Retries once on rate limit (429) errors
     pub async fn create_scheduled_event(&self, event: ScheduledEvent) -> AppResult<ScheduledEvent> {
         let url = self.api_url(&format!("/guilds/{}/scheduled-events", event.guild_id));
 
@@ -486,6 +516,38 @@ impl DiscordService {
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
+
+            // Handle rate limiting (429) with retry
+            if status.as_u16() == 429 {
+                Self::handle_rate_limit(&error_text).await?;
+                // Retry once after waiting
+                let retry_response = self
+                    .client
+                    .post(&url)
+                    .header("Authorization", self.auth_header())
+                    .header("Content-Type", "application/json")
+                    .json(&event)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        AppError::Discord(format!("Failed to retry create scheduled event: {}", e))
+                    })?;
+
+                if !retry_response.status().is_success() {
+                    let retry_status = retry_response.status();
+                    let retry_error_text = retry_response.text().await.unwrap_or_default();
+                    return Err(AppError::Discord(format!(
+                        "Discord API error ({}): {}",
+                        retry_status, retry_error_text
+                    )));
+                }
+
+                return retry_response
+                    .json()
+                    .await
+                    .map_err(|e| AppError::Discord(format!("Failed to parse event response: {}", e)));
+            }
+
             return Err(AppError::Discord(format!(
                 "Discord API error ({}): {}",
                 status, error_text
@@ -499,6 +561,7 @@ impl DiscordService {
     }
 
     /// Update a scheduled event
+    /// Retries once on rate limit (429) errors
     pub async fn update_scheduled_event(
         &self,
         guild_id: &str,
@@ -523,6 +586,38 @@ impl DiscordService {
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
+
+            // Handle rate limiting (429) with retry
+            if status.as_u16() == 429 {
+                Self::handle_rate_limit(&error_text).await?;
+                // Retry once after waiting
+                let retry_response = self
+                    .client
+                    .patch(&url)
+                    .header("Authorization", self.auth_header())
+                    .header("Content-Type", "application/json")
+                    .json(&event)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        AppError::Discord(format!("Failed to retry update scheduled event: {}", e))
+                    })?;
+
+                if !retry_response.status().is_success() {
+                    let retry_status = retry_response.status();
+                    let retry_error_text = retry_response.text().await.unwrap_or_default();
+                    return Err(AppError::Discord(format!(
+                        "Discord API error ({}): {}",
+                        retry_status, retry_error_text
+                    )));
+                }
+
+                return retry_response
+                    .json()
+                    .await
+                    .map_err(|e| AppError::Discord(format!("Failed to parse event response: {}", e)));
+            }
+
             return Err(AppError::Discord(format!(
                 "Discord API error ({}): {}",
                 status, error_text
@@ -536,6 +631,7 @@ impl DiscordService {
     }
 
     /// Delete a scheduled event
+    /// Retries once on rate limit (429) errors
     pub async fn delete_scheduled_event(&self, guild_id: &str, event_id: &str) -> AppResult<()> {
         let url = self.api_url(&format!(
             "/guilds/{}/scheduled-events/{}",
@@ -553,6 +649,33 @@ impl DiscordService {
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
+
+            // Handle rate limiting (429) with retry
+            if status.as_u16() == 429 {
+                Self::handle_rate_limit(&error_text).await?;
+                // Retry once after waiting
+                let retry_response = self
+                    .client
+                    .delete(&url)
+                    .header("Authorization", self.auth_header())
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        AppError::Discord(format!("Failed to retry delete scheduled event: {}", e))
+                    })?;
+
+                if !retry_response.status().is_success() {
+                    let retry_status = retry_response.status();
+                    let retry_error_text = retry_response.text().await.unwrap_or_default();
+                    return Err(AppError::Discord(format!(
+                        "Discord API error ({}): {}",
+                        retry_status, retry_error_text
+                    )));
+                }
+
+                return Ok(());
+            }
+
             return Err(AppError::Discord(format!(
                 "Discord API error ({}): {}",
                 status, error_text

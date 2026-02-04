@@ -82,6 +82,7 @@ impl CalendarSyncManager {
         state: &Arc<AppState>,
         integration: &DiscordIntegration,
         segment: &ScheduleSegment,
+        twitch_login: &str,
     ) {
         // Parse start/end times
         let start_time: NaiveDateTime = match parse_rfc3339_to_naive(&segment.start_time) {
@@ -129,6 +130,8 @@ impl CalendarSyncManager {
         };
 
         // Prepare Discord ScheduledEvent payload
+        // For EXTERNAL events (entity_type: 3), Discord requires entity_metadata with a location
+        let location = format!("https://twitch.tv/{}", twitch_login);
         let scheduled_event = ScheduledEvent {
             id: None,
             guild_id: integration.discord_guild_id.clone(),
@@ -139,7 +142,9 @@ impl CalendarSyncManager {
             scheduled_end_time: segment.end_time.clone(),
             privacy_level: 2, // GUILD_ONLY
             entity_type: 3,   // EXTERNAL
-            entity_metadata: None,
+            entity_metadata: Some(crate::services::discord::EntityMetadata {
+                location: Some(location),
+            }),
         };
 
         // Ensure we have a Discord service available
@@ -359,7 +364,11 @@ impl CalendarSyncManager {
             }
 
             // Process segment: upsert DB row and ensure Discord scheduled event is created/updated
-            Self::process_segment(state, integration, &segment).await;
+            Self::process_segment(state, integration, &segment, &user.twitch_login).await;
+
+            // Add a small delay between requests to avoid hitting Discord rate limits
+            // Discord allows 5 requests per 5 seconds for scheduled events endpoints
+            tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
         } // end for segments
 
         // Cleanup: remove DB rows (and their Discord events) for segments that no longer exist
