@@ -20,6 +20,7 @@ env:
 jobs:
   build-backend:
     name: Build Backend
+    needs: test-backend
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -67,6 +68,7 @@ jobs:
 
   build-frontend:
     name: Build Frontend
+    needs: test-frontend
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -151,6 +153,8 @@ jobs:
   test-frontend:
     name: Test Frontend
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
