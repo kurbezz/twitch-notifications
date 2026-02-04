@@ -854,11 +854,26 @@ async fn update_discord_integration(
         let state_clone = state.clone();
         let updated_clone = updated.clone();
         tokio::spawn(async move {
-            tracing::info!("Triggering immediate calendar sync for integration {}", updated_clone.id);
-            if let Err(e) = crate::services::calendar::CalendarSyncManager::sync_for_integration(&state_clone, &updated_clone).await {
-                tracing::warn!("Immediate calendar sync for integration {} failed: {:?}", updated_clone.id, e);
+            tracing::info!(
+                "Triggering immediate calendar sync for integration {}",
+                updated_clone.id
+            );
+            if let Err(e) = crate::services::calendar::CalendarSyncManager::sync_for_integration(
+                &state_clone,
+                &updated_clone,
+            )
+            .await
+            {
+                tracing::warn!(
+                    "Immediate calendar sync for integration {} failed: {:?}",
+                    updated_clone.id,
+                    e
+                );
             } else {
-                tracing::info!("Immediate calendar sync for integration {} completed", updated_clone.id);
+                tracing::info!(
+                    "Immediate calendar sync for integration {} completed",
+                    updated_clone.id
+                );
             }
         });
     }
