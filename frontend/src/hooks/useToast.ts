@@ -140,11 +140,12 @@ type Toast = Omit<ToastProps, 'id'>;
 function toast({ ...props }: Toast) {
   const id = genId();
 
-  const update = (props: ToastProps) =>
+  // Allow callers to update only a subset of toast props (title/description/variant)
+  const update = (props: Partial<Toast>) =>
     dispatch({
       type: 'UPDATE_TOAST',
       toast: { ...props, id },
-    });
+    } as Action);
   const dismiss = () => dispatch({ type: 'DISMISS_TOAST', toastId: id });
 
   dispatch({
