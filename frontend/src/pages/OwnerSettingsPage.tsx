@@ -4,9 +4,10 @@ import { useParams, Navigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { settingsApi } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
-import { Loader2 } from 'lucide-react';
+import { Loader2, MessageSquare } from 'lucide-react';
 import UserSettingsBlock from '@/components/user-settings-block';
 import UserIntegrationsBlock from '@/components/user-integrations-block';
+import UserBotSettingsBlock from '@/components/user-bot-settings-block';
 import { Button } from '@/components/ui/button';
 
 /**
@@ -120,6 +121,15 @@ export function OwnerSettingsPage() {
 
       {/* Settings block (message templates etc.) */}
       <UserSettingsBlock ownerId={ownerId} canManage={canManage} />
+
+      {/* Chat bot settings block */}
+      <section className="space-y-6">
+        <div className="flex items-center gap-2">
+          <MessageSquare className="h-5 w-5 text-twitch" />
+          <h2 className="text-xl font-semibold">{t('bot_settings.title')}</h2>
+        </div>
+        <UserBotSettingsBlock ownerId={ownerId} canManage={canManage} />
+      </section>
 
       {/* Integrations block (Telegram / Discord) */}
       <UserIntegrationsBlock ownerId={ownerId} canManage={canManage} />
