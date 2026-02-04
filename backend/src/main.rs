@@ -288,6 +288,8 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/notifications", routes::notifications::router())
         // Integration routes (Telegram, Discord)
         .nest("/api/integrations", routes::integrations::router())
+        // Calendar sync endpoints (manual trigger / status)
+        .nest("/api/calendar", routes::calendar::router())
         // Twitch EventSub webhooks (apply rate limiting)
         .nest(
             "/webhooks",
