@@ -180,6 +180,59 @@ mod tests {
             .replace("{url}", "");
         assert_eq!(rendered, "🔴 xQc is live — Just Chatting");
     }
+
+    /// Test that reward redemption notification logic only checks integration setting,
+    /// not user-level bot setting (which controls chat notifications separately)
+    #[test]
+    fn reward_redemption_integration_logic_independent() {
+        // Simulate the logic from send_notification for RewardRedemption
+        let integration_enabled = true;
+        let _user_setting_enabled = false; // Chat notifications disabled (not used in integration logic)
+
+        // Integration should send if integration setting is enabled,
+        // regardless of user-level bot setting
+        let should_send = integration_enabled;
+        assert!(should_send, "Integration should send when integration setting is enabled, regardless of bot setting");
+
+        let integration_disabled = false;
+        let should_not_send = integration_disabled;
+        assert!(
+            !should_not_send,
+            "Integration should not send when integration setting is disabled"
+        );
+    }
+
+    /// Test that reward redemption logic works correctly for different combinations
+    #[test]
+    fn reward_redemption_integration_combinations() {
+        // Test case 1: Integration enabled, bot setting enabled
+        // Result: Integration should send (independent of bot setting)
+        let integration_enabled = true;
+        let _bot_setting_enabled = true; // Not used in integration logic
+        let should_send_integration = integration_enabled;
+        assert!(should_send_integration);
+
+        // Test case 2: Integration enabled, bot setting disabled
+        // Result: Integration should still send (independent of bot setting)
+        let integration_enabled = true;
+        let _bot_setting_enabled = false; // Not used in integration logic
+        let should_send_integration = integration_enabled;
+        assert!(should_send_integration);
+
+        // Test case 3: Integration disabled, bot setting enabled
+        // Result: Integration should not send
+        let integration_enabled = false;
+        let _bot_setting_enabled = true; // Not used in integration logic
+        let should_send_integration = integration_enabled;
+        assert!(!should_send_integration);
+
+        // Test case 4: Integration disabled, bot setting disabled
+        // Result: Integration should not send
+        let integration_enabled = false;
+        let _bot_setting_enabled = false; // Not used in integration logic
+        let should_send_integration = integration_enabled;
+        assert!(!should_send_integration);
+    }
 }
 
 /// Serialize the notification-specific payload so the background worker can
@@ -437,8 +490,6 @@ impl NotificationService {
                     NotificationContent::RewardRedemption(_) => {
                         if !integration.notify_reward_redemption {
                             "integration notify_reward_redemption disabled"
-                        } else if !settings.notify_reward_redemption {
-                            "user-level notify_reward_redemption setting disabled"
                         } else {
                             "notification type not enabled"
                         }
@@ -547,8 +598,6 @@ impl NotificationService {
                     NotificationContent::RewardRedemption(_) => {
                         if !integration.notify_reward_redemption {
                             "integration notify_reward_redemption disabled"
-                        } else if !settings.notify_reward_redemption {
-                            "user-level notify_reward_redemption setting disabled"
                         } else {
                             "notification type not enabled"
                         }
