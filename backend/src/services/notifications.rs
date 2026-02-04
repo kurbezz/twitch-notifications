@@ -549,7 +549,6 @@ impl NotificationService {
         );
 
         for integration in discord_integrations {
-
             let should_send = match content {
                 NotificationContent::StreamOnline(_) => {
                     let enabled = integration.notify_stream_online;
