@@ -11,13 +11,14 @@ use hmac::{Hmac, Mac};
 use serde::Deserialize;
 use sha2::Sha256;
 
-use crate::db::UserRepository;
+use crate::db::{NotificationSettingsRepository, UserRepository};
 use crate::error::{AppError, AppResult};
 use crate::services::notifications::{
     CategoryChangeData, NotificationContent, NotificationService, RewardRedemptionData,
     StreamOfflineData, StreamOnlineData, TitleChangeData,
 };
 use crate::AppState;
+use chrono::{Duration, Utc};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -680,5 +681,176 @@ async fn handle_channel_points_redemption(
         user.id
     );
 
+    // Send chat message if enabled
+    let settings = NotificationSettingsRepository::get_or_create(&state.db, &user.id).await?;
+    if settings.notify_reward_redemption {
+        // Normalize placeholders (convert {{...}} -> {...})
+        let template = normalize_placeholders(&settings.reward_redemption_message);
+        let message = template
+            .replace("{user}", &data.redeemer_name)
+            .replace("{reward}", &data.reward_name)
+            .replace("{cost}", &data.reward_cost.to_string());
+
+        // Check if token is expired or about to expire (within 60 seconds)
+        let token_expires_at = chrono::DateTime::<Utc>::from_naive_utc_and_offset(
+            user.twitch_token_expires_at,
+            Utc,
+        );
+        let mut access_token = user.twitch_access_token.clone();
+        let mut refresh_token = user.twitch_refresh_token.clone();
+
+        if token_expires_at - Duration::seconds(60) <= Utc::now() {
+            // Token expired or about to expire, refresh it
+            tracing::debug!("Twitch token expired or about to expire, refreshing for user {}", user.id);
+            let token_response = state.twitch.refresh_token(&refresh_token).await?;
+            let new_expires_at = crate::services::twitch::TwitchService::calculate_token_expiry(
+                token_response.expires_in,
+            );
+
+            // Update stored tokens
+            UserRepository::update_tokens(
+                &state.db,
+                &user.id,
+                &token_response.access_token,
+                &token_response.refresh_token,
+                new_expires_at.naive_utc(),
+            )
+            .await?;
+
+            access_token = token_response.access_token;
+            refresh_token = token_response.refresh_token;
+        }
+
+        // Send chat message
+        match state
+            .twitch
+            .send_chat_message(&access_token, &user.twitch_id, &user.twitch_id, &message)
+            .await
+        {
+            Ok(result) => {
+                if result.is_sent {
+                    tracing::info!(
+                        "Sent reward redemption chat message to channel {} for user {}",
+                        user.twitch_id,
+                        user.id
+                    );
+                } else {
+                    tracing::warn!(
+                        "Failed to send reward redemption chat message to channel {} for user {}: {:?}",
+                        user.twitch_id,
+                        user.id,
+                        result.drop_reason
+                    );
+                }
+            }
+            Err(err) => {
+                // If unauthorized, try refreshing token once more
+                if let AppError::TwitchApi(ref msg) = err {
+                    if msg.contains("401") || msg.contains("Unauthorized") {
+                        tracing::debug!(
+                            "Unauthorized when sending chat message, refreshing token for user {}",
+                            user.id
+                        );
+                        let token_response = state.twitch.refresh_token(&refresh_token).await?;
+                        let new_expires_at =
+                            crate::services::twitch::TwitchService::calculate_token_expiry(
+                                token_response.expires_in,
+                            );
+
+                        UserRepository::update_tokens(
+                            &state.db,
+                            &user.id,
+                            &token_response.access_token,
+                            &token_response.refresh_token,
+                            new_expires_at.naive_utc(),
+                        )
+                        .await?;
+
+                        // Retry once with new token
+                        match state
+                            .twitch
+                            .send_chat_message(
+                                &token_response.access_token,
+                                &user.twitch_id,
+                                &user.twitch_id,
+                                &message,
+                            )
+                            .await
+                        {
+                            Ok(result) => {
+                                if result.is_sent {
+                                    tracing::info!(
+                                        "Sent reward redemption chat message to channel {} for user {} (after token refresh)",
+                                        user.twitch_id,
+                                        user.id
+                                    );
+                                } else {
+                                    tracing::warn!(
+                                        "Failed to send reward redemption chat message to channel {} for user {} after token refresh: {:?}",
+                                        user.twitch_id,
+                                        user.id,
+                                        result.drop_reason
+                                    );
+                                }
+                            }
+                            Err(retry_err) => {
+                                tracing::error!(
+                                    "Failed to send reward redemption chat message to channel {} for user {} after token refresh: {:?}",
+                                    user.twitch_id,
+                                    user.id,
+                                    retry_err
+                                );
+                            }
+                        }
+                    } else {
+                        tracing::error!(
+                            "Failed to send reward redemption chat message to channel {} for user {}: {:?}",
+                            user.twitch_id,
+                            user.id,
+                            err
+                        );
+                    }
+                } else {
+                    tracing::error!(
+                        "Failed to send reward redemption chat message to channel {} for user {}: {:?}",
+                        user.twitch_id,
+                        user.id,
+                        err
+                    );
+                }
+            }
+        }
+    }
+
     Ok(())
+}
+
+/// Normalize placeholders in a message template.
+/// Converts occurrences like `{{streamer}}` into `{streamer}`.
+fn normalize_placeholders(msg: &str) -> String {
+    let mut result = String::with_capacity(msg.len());
+    let mut start = 0usize;
+
+    while let Some(open_rel) = msg[start..].find("{{") {
+        let open = start + open_rel;
+        if let Some(close_rel) = msg[open + 2..].find("}}") {
+            let close = open + 2 + close_rel;
+            // append text before the opening braces
+            result.push_str(&msg[start..open]);
+            // take inner content and wrap it with a single pair of braces
+            let inner = &msg[open + 2..close];
+            result.push('{');
+            result.push_str(inner);
+            result.push('}');
+            start = close + 2;
+        } else {
+            // no closing braces found; append rest and return
+            result.push_str(&msg[start..]);
+            return result;
+        }
+    }
+
+    // append remaining text
+    result.push_str(&msg[start..]);
+    result
 }

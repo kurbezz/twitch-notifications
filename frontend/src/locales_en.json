@@ -375,6 +375,10 @@
     "reward": {
       "title": "Reward activation",
       "description": "Sent when a channel point reward is redeemed"
+    },
+    "reward_notification_toggle": {
+      "label": "Send reward activation notifications to chat",
+      "description": "Enable to have the bot send messages to the streamer's chat when channel point rewards are redeemed"
     }
   },
   "auth_callback": {

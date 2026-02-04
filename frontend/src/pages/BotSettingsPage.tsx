@@ -4,15 +4,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { settingsApi, MessagesInfo } from '@/lib/api';
 
 import MessageEditor from '@/components/message-editor';
+import ToggleSwitch from '@/components/toggle-switch';
 import { Loader2, MessageSquare } from 'lucide-react';
 
 // ImportMeta type is declared elsewhere; avoid redeclaring it with `any` here.
 
 export function BotSettingsPage({ showNotice = true }: { showNotice?: boolean }) {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   // Fetch settings (user-level)
-  const { isLoading: settingsLoading } = useQuery({
+  const { data: settings, isLoading: settingsLoading } = useQuery({
     queryKey: ['settings'],
     queryFn: settingsApi.getSettings,
   });
@@ -24,6 +26,10 @@ export function BotSettingsPage({ showNotice = true }: { showNotice?: boolean })
   });
 
   // Discord invite fetch removed (invite button removed from UI)
+
+  // Local state for editing the reward message
+  const [localMessages, setLocalMessages] = useState<Partial<MessagesInfo>>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Mutations
 
@@ -51,10 +57,12 @@ export function BotSettingsPage({ showNotice = true }: { showNotice?: boolean })
     },
   });
 
-  // Local state for editing the reward message
-  const [localMessages, setLocalMessages] = useState<Partial<MessagesInfo>>({});
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const { t } = useTranslation();
+  const updateSettingsMutation = useMutation({
+    mutationFn: settingsApi.updateSettings,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+    },
+  });
 
   useEffect(() => {
     if (messagesData) {
@@ -114,6 +122,16 @@ export function BotSettingsPage({ showNotice = true }: { showNotice?: boolean })
             </div>
           ) : null}
         </div>
+
+        <ToggleSwitch
+          label={t('bot_settings.reward_notification_toggle.label')}
+          description={t('bot_settings.reward_notification_toggle.description')}
+          checked={settings?.notify_reward_redemption ?? false}
+          onChange={(checked) => {
+            updateSettingsMutation.mutate({ notify_reward_redemption: checked });
+          }}
+          disabled={updateSettingsMutation.isPending}
+        />
 
         <MessageEditor
           label={t('bot_settings.reward.title')}
