@@ -16,14 +16,14 @@ fi
 printf "\n➡️  Frontend: running TypeScript check and ESLint\n"
 if [ -d frontend ]; then
   if [ -d frontend/node_modules ]; then
-    # Typecheck (no emit)
-    if ! npx --no-install --prefix frontend tsc --noEmit; then
+    # Run checks from within frontend dir to ensure tsc picks up the correct tsconfig
+    if ! (cd frontend && npx --no-install tsc --noEmit); then
       echo "\n❌ Frontend typecheck failed. Aborting push." >&2
       exit 1
     fi
 
     # Lint
-    if ! npm --prefix frontend run lint; then
+    if ! (cd frontend && npm run lint); then
       echo "\n❌ Frontend lint failed. Aborting push." >&2
       exit 1
     fi
