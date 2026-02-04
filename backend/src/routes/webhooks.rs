@@ -406,24 +406,117 @@ async fn handle_stream_online(state: &Arc<AppState>, event: StreamOnlineEvent) -
         };
 
     // Get stream info from Twitch API for additional details
-    let stream = state
-        .twitch
-        .get_stream(&user.twitch_access_token, &event.broadcaster_user_id)
-        .await?;
+    // We'll try to refresh the token if it's expired or invalid, and retry the request
+    let (title, category, thumbnail) = {
+        let mut access_token = user.twitch_access_token.clone();
+        let mut refresh_token = user.twitch_refresh_token.clone();
+        let user_id = user.id.clone();
 
-    let (title, category, thumbnail) = if let Some(s) = stream {
-        tracing::debug!(
-            "Stream details retrieved: title='{}', category='{}'",
-            s.title,
-            s.game_name
-        );
-        (s.title, s.game_name, Some(s.thumbnail_url))
-    } else {
-        tracing::warn!(
-            "Could not retrieve stream details for broadcaster {}, using defaults",
-            event.broadcaster_user_id
-        );
-        ("Stream started!".to_string(), "Unknown".to_string(), None)
+        // Helper: refresh token and update in DB
+        async fn refresh_token_helper(
+            state: &Arc<AppState>,
+            user_id: &str,
+            refresh_token: &str,
+        ) -> AppResult<(String, String)> {
+            let token_response = state.twitch.refresh_token(refresh_token).await?;
+            let new_expires_at = crate::services::twitch::TwitchService::calculate_token_expiry(
+                token_response.expires_in,
+            );
+
+            UserRepository::update_tokens(
+                &state.db,
+                user_id,
+                &token_response.access_token,
+                &token_response.refresh_token,
+                new_expires_at.naive_utc(),
+            )
+            .await?;
+
+            Ok((token_response.access_token, token_response.refresh_token))
+        }
+
+        // Check if token is expired or about to expire (within 60 seconds)
+        let token_expires_at =
+            chrono::DateTime::<Utc>::from_naive_utc_and_offset(user.twitch_token_expires_at, Utc);
+        if token_expires_at - Duration::seconds(60) <= Utc::now() {
+            tracing::debug!(
+                "Twitch token expired or about to expire, refreshing for user {}",
+                user.id
+            );
+            match refresh_token_helper(state, &user_id, &refresh_token).await {
+                Ok((new_access, new_refresh)) => {
+                    access_token = new_access;
+                    refresh_token = new_refresh;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to refresh token proactively for user {}: {:?}. Will try with existing token.",
+                        user_id,
+                        e
+                    );
+                }
+            }
+        }
+
+        // Try to get stream info
+        let mut stream_result = state
+            .twitch
+            .get_stream(&access_token, &event.broadcaster_user_id)
+            .await;
+
+        // If we got 401, refresh token and retry once
+        if let Err(AppError::TwitchApi(ref msg)) = stream_result {
+            if msg.contains("401") || msg.contains("Unauthorized") {
+                tracing::info!(
+                    "Unauthorized when getting stream info, refreshing token for user {}",
+                    user_id
+                );
+                match refresh_token_helper(state, &user_id, &refresh_token).await {
+                    Ok((new_access, _new_refresh)) => {
+                        access_token = new_access;
+                        // Retry with new token
+                        stream_result = state
+                            .twitch
+                            .get_stream(&access_token, &event.broadcaster_user_id)
+                            .await;
+                    }
+                    Err(refresh_err) => {
+                        tracing::error!(
+                            "Failed to refresh token for user {}: {:?}",
+                            user_id,
+                            refresh_err
+                        );
+                    }
+                }
+            }
+        }
+
+        // Process the result
+        match stream_result {
+            Ok(Some(s)) => {
+                tracing::debug!(
+                    "Stream details retrieved: title='{}', category='{}'",
+                    s.title,
+                    s.game_name
+                );
+                (s.title, s.game_name, Some(s.thumbnail_url))
+            }
+            Ok(None) => {
+                tracing::warn!(
+                    "Stream not found for broadcaster {} (stream may have just ended), using defaults",
+                    event.broadcaster_user_name
+                );
+                ("Stream started!".to_string(), "Unknown".to_string(), None)
+            }
+            Err(err) => {
+                tracing::warn!(
+                    "Could not retrieve stream details for broadcaster {}: {:?}. Using defaults and sending notification anyway.",
+                    event.broadcaster_user_name,
+                    err
+                );
+                ("Stream started!".to_string(), "Unknown".to_string(), None)
+            }
+        }
     };
 
     // Send notifications
