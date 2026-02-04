@@ -692,16 +692,17 @@ async fn handle_channel_points_redemption(
             .replace("{cost}", &data.reward_cost.to_string());
 
         // Check if token is expired or about to expire (within 60 seconds)
-        let token_expires_at = chrono::DateTime::<Utc>::from_naive_utc_and_offset(
-            user.twitch_token_expires_at,
-            Utc,
-        );
+        let token_expires_at =
+            chrono::DateTime::<Utc>::from_naive_utc_and_offset(user.twitch_token_expires_at, Utc);
         let mut access_token = user.twitch_access_token.clone();
         let mut refresh_token = user.twitch_refresh_token.clone();
 
         if token_expires_at - Duration::seconds(60) <= Utc::now() {
             // Token expired or about to expire, refresh it
-            tracing::debug!("Twitch token expired or about to expire, refreshing for user {}", user.id);
+            tracing::debug!(
+                "Twitch token expired or about to expire, refreshing for user {}",
+                user.id
+            );
             let token_response = state.twitch.refresh_token(&refresh_token).await?;
             let new_expires_at = crate::services::twitch::TwitchService::calculate_token_expiry(
                 token_response.expires_in,

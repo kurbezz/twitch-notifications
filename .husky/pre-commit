@@ -18,6 +18,15 @@ if [ -d backend ]; then
     echo "\n❌ Backend formatting failed." >&2
     exit 1
   }
+  # Add any formatted Rust files back to staging
+  # Find all modified .rs files in backend directory and add them
+  git diff --name-only --diff-filter=ACM | grep '^backend/.*\.rs$' | while read -r file; do
+    git add "$file" 2>/dev/null || true
+  done
+  # Also add any unstaged .rs files that were modified by formatter
+  git diff --name-only | grep '^backend/.*\.rs$' | while read -r file; do
+    git add "$file" 2>/dev/null || true
+  done
   # Verify formatting (should pass after formatting)
   printf "\n➡️  Backend: verifying formatting\n"
   if ! (cd backend && cargo fmt --all -- --check); then

@@ -569,7 +569,10 @@ impl NotificationService {
         if results.is_empty() {
             let user_setting_info = match content {
                 NotificationContent::RewardRedemption(_) => {
-                    format!(", user_setting_notify_reward_redemption={}", settings.notify_reward_redemption)
+                    format!(
+                        ", user_setting_notify_reward_redemption={}",
+                        settings.notify_reward_redemption
+                    )
                 }
                 _ => String::new(),
             };
