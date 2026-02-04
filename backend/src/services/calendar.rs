@@ -206,17 +206,39 @@ impl CalendarSyncManager {
                 .update_scheduled_event(
                     &integration.discord_guild_id,
                     &existing_id,
-                    scheduled_event,
+                    scheduled_event.clone(),
                 )
                 .await
             {
                 Ok(_) => Some(existing_id),
                 Err(e) => {
-                    warn!(
-                        "Failed to update Discord scheduled event for recurring group {}: {:?}",
-                        title, e
-                    );
-                    None
+                    // If event was deleted (404), create a new one
+                    let error_msg = format!("{:?}", e);
+                    if error_msg.contains("404")
+                        || error_msg.contains("Unknown Guild Scheduled Event")
+                    {
+                        warn!(
+                            "Discord event {} was deleted for recurring group {}, creating new event",
+                            existing_id, title
+                        );
+                        // Create new event
+                        match discord.create_scheduled_event(scheduled_event).await {
+                            Ok(created) => created.id,
+                            Err(create_err) => {
+                                warn!(
+                                    "Failed to create new Discord scheduled event for recurring group {} after 404: {:?}",
+                                    title, create_err
+                                );
+                                None
+                            }
+                        }
+                    } else {
+                        warn!(
+                            "Failed to update Discord scheduled event for recurring group {}: {:?}",
+                            title, e
+                        );
+                        None
+                    }
                 }
             }
         } else {
@@ -362,7 +384,7 @@ impl CalendarSyncManager {
                 .update_scheduled_event(
                     &integration.discord_guild_id,
                     existing_discord_id,
-                    scheduled_event,
+                    scheduled_event.clone(),
                 )
                 .await
             {
@@ -382,10 +404,49 @@ impl CalendarSyncManager {
                     }
                 }
                 Err(e) => {
-                    warn!(
-                        "Failed to update Discord scheduled event {}: {:?}",
-                        existing_discord_id, e
-                    );
+                    // If event was deleted (404), create a new one
+                    let error_msg = format!("{:?}", e);
+                    if error_msg.contains("404")
+                        || error_msg.contains("Unknown Guild Scheduled Event")
+                    {
+                        warn!(
+                            "Discord event {} was deleted, creating new event for segment {}",
+                            existing_discord_id, segment.id
+                        );
+                        // Create new event
+                        match discord.create_scheduled_event(scheduled_event).await {
+                            Ok(created) => {
+                                if let Some(created_id) = created.id {
+                                    if let Err(e) =
+                                        SyncedCalendarRepository::update_discord_event_id(
+                                            &state.db,
+                                            &record.id,
+                                            Some(&created_id),
+                                        )
+                                        .await
+                                    {
+                                        warn!(
+                                            "Failed to store new Discord event id for {}: {:?}",
+                                            record.id, e
+                                        );
+                                    }
+                                } else {
+                                    warn!("Discord returned a created scheduled event without an id for segment {}", segment.id);
+                                }
+                            }
+                            Err(create_err) => {
+                                warn!(
+                                    "Failed to create new Discord scheduled event for segment {} after 404: {:?}",
+                                    segment.id, create_err
+                                );
+                            }
+                        }
+                    } else {
+                        warn!(
+                            "Failed to update Discord scheduled event {}: {:?}",
+                            existing_discord_id, e
+                        );
+                    }
                 }
             }
         } else {
