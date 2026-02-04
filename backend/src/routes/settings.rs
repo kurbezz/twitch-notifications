@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::db::{
     DiscordIntegrationRepository, NotificationSettings, NotificationSettingsRepository,
-    SettingsShareRepository, TelegramIntegrationRepository, UpdateDiscordIntegration,
-    UpdateNotificationSettings, UpdateTelegramIntegration, UserRepository,
+    SettingsShareRepository, TelegramIntegrationRepository, UpdateNotificationSettings,
+    UserRepository,
 };
 use crate::error::{AppError, AppResult};
 use crate::routes::auth::AuthUser;
@@ -102,9 +102,13 @@ pub struct UserSettingsResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateSettingsRequest {
+    #[allow(dead_code)] // Kept for API compatibility, but only notify_reward_redemption is used
     pub notify_stream_online: Option<bool>,
+    #[allow(dead_code)] // Kept for API compatibility, but only notify_reward_redemption is used
     pub notify_stream_offline: Option<bool>,
+    #[allow(dead_code)] // Kept for API compatibility, but only notify_reward_redemption is used
     pub notify_title_change: Option<bool>,
+    #[allow(dead_code)] // Kept for API compatibility, but only notify_reward_redemption is used
     pub notify_category_change: Option<bool>,
     pub notify_reward_redemption: Option<bool>,
 }
@@ -262,46 +266,14 @@ async fn get_settings(
     }))
 }
 
-/// Update aggregated notify flags across all integrations for current user
+/// Update chat bot settings (notify_reward_redemption) - does NOT affect integrations
 async fn update_settings(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
     Json(request): Json<UpdateSettingsRequest>,
 ) -> AppResult<Json<UserSettingsResponse>> {
-    // Update Telegram integrations
-    let telegrams = TelegramIntegrationRepository::find_by_user_id(&state.db, &user.id).await?;
-    for t in telegrams {
-        let update = UpdateTelegramIntegration {
-            telegram_chat_title: None,
-            is_enabled: None,
-            notify_stream_online: request.notify_stream_online,
-            notify_stream_offline: request.notify_stream_offline,
-            notify_title_change: request.notify_title_change,
-            notify_category_change: request.notify_category_change,
-            notify_reward_redemption: request.notify_reward_redemption,
-        };
-        TelegramIntegrationRepository::update(&state.db, &t.id, update).await?;
-    }
-
-    // Update Discord integrations
-    let discords = DiscordIntegrationRepository::find_by_user_id(&state.db, &user.id).await?;
-    for d in discords {
-        let update = UpdateDiscordIntegration {
-            discord_channel_id: None,
-            discord_channel_name: None,
-            discord_webhook_url: None,
-            is_enabled: None,
-            notify_stream_online: request.notify_stream_online,
-            notify_stream_offline: request.notify_stream_offline,
-            notify_title_change: request.notify_title_change,
-            notify_category_change: request.notify_category_change,
-            notify_reward_redemption: request.notify_reward_redemption,
-            calendar_sync_enabled: None,
-        };
-        DiscordIntegrationRepository::update(&state.db, &d.id, update).await?;
-    }
-
-    // Persist user-level reward_redemption flag (store in user_settings)
+    // Only update chat bot settings - integrations are managed separately
+    // notify_reward_redemption controls chat bot notifications only
     let update_ns = UpdateNotificationSettings {
         stream_online_message: None,
         stream_offline_message: None,
@@ -382,7 +354,7 @@ async fn get_settings_for_user(
     }))
 }
 
-/// Update aggregated notify flags across integrations for another user (requires manage rights)
+/// Update chat bot settings for another user (requires manage rights) - does NOT affect integrations
 async fn update_settings_for_user(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -401,40 +373,8 @@ async fn update_settings_for_user(
         _ => return Err(AppError::Forbidden),
     }
 
-    // Update Telegram integrations
-    let telegrams = TelegramIntegrationRepository::find_by_user_id(&state.db, &owner_id).await?;
-    for t in telegrams {
-        let update = UpdateTelegramIntegration {
-            telegram_chat_title: None,
-            is_enabled: None,
-            notify_stream_online: request.notify_stream_online,
-            notify_stream_offline: request.notify_stream_offline,
-            notify_title_change: request.notify_title_change,
-            notify_category_change: request.notify_category_change,
-            notify_reward_redemption: request.notify_reward_redemption,
-        };
-        TelegramIntegrationRepository::update(&state.db, &t.id, update).await?;
-    }
-
-    // Update Discord integrations
-    let discords = DiscordIntegrationRepository::find_by_user_id(&state.db, &owner_id).await?;
-    for d in discords {
-        let update = UpdateDiscordIntegration {
-            discord_channel_id: None,
-            discord_channel_name: None,
-            discord_webhook_url: None,
-            is_enabled: None,
-            notify_stream_online: request.notify_stream_online,
-            notify_stream_offline: request.notify_stream_offline,
-            notify_title_change: request.notify_title_change,
-            notify_category_change: request.notify_category_change,
-            notify_reward_redemption: request.notify_reward_redemption,
-            calendar_sync_enabled: None,
-        };
-        DiscordIntegrationRepository::update(&state.db, &d.id, update).await?;
-    }
-
-    // Persist owner-level reward notification flag (user setting) and return updated settings
+    // Only update chat bot settings - integrations are managed separately
+    // notify_reward_redemption controls chat bot notifications only
     let update_ns = UpdateNotificationSettings {
         stream_online_message: None,
         stream_offline_message: None,
