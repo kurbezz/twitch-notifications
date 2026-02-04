@@ -178,11 +178,3 @@ jobs:
         working-directory: ./frontend
         run: npm run build
 
-  notify:
-    needs: [build-backend, build-frontend]
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-    steps:
-      - name: Trigger Webhook
-        run: |
-          curl -X POST "${{ secrets.WEBHOOK_URL }}"
