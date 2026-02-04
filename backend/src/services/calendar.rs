@@ -87,9 +87,12 @@ impl CalendarSyncManager {
     ) {
         let now = Utc::now().naive_utc();
 
-        // Find the first future occurrence in the group
+        // Find all future occurrences and determine the range
+        let mut future_segments: Vec<(&ScheduleSegment, NaiveDateTime)> = Vec::new();
         let mut first_future_segment: Option<&ScheduleSegment> = None;
         let mut first_future_start: Option<NaiveDateTime> = None;
+        let mut last_future_segment: Option<&ScheduleSegment> = None;
+        let mut last_future_start: Option<NaiveDateTime> = None;
 
         for segment in segments {
             let start_time = match parse_rfc3339_to_naive(&segment.start_time) {
@@ -97,11 +100,20 @@ impl CalendarSyncManager {
                 None => continue,
             };
 
-            if start_time >= now
-                && (first_future_start.is_none() || start_time < first_future_start.unwrap())
-            {
-                first_future_start = Some(start_time);
-                first_future_segment = Some(segment);
+            if start_time >= now {
+                future_segments.push((segment, start_time));
+
+                // Track first future occurrence
+                if first_future_start.is_none() || start_time < first_future_start.unwrap() {
+                    first_future_start = Some(start_time);
+                    first_future_segment = Some(segment);
+                }
+
+                // Track last future occurrence
+                if last_future_start.is_none() || start_time > last_future_start.unwrap() {
+                    last_future_start = Some(start_time);
+                    last_future_segment = Some(segment);
+                }
             }
         }
 
@@ -109,6 +121,23 @@ impl CalendarSyncManager {
         let Some(first_segment) = first_future_segment else {
             return;
         };
+
+        // Use last future occurrence for the event, but ensure it's at least 2 weeks from now
+        let target_end_time = if let Some(last_start) = last_future_start {
+            // Use last occurrence, but ensure it's at least 2 weeks from now
+            let two_weeks_from_now = now + Duration::weeks(2);
+            if last_start > two_weeks_from_now {
+                last_start
+            } else {
+                two_weeks_from_now
+            }
+        } else {
+            // Fallback: use 2 weeks from now
+            now + Duration::weeks(2)
+        };
+
+        // Use last segment for end time, or first segment if no last segment
+        let segment_for_end = last_future_segment.unwrap_or(first_segment);
 
         // Upsert DB rows for all segments in the group
         let mut records = Vec::new();
@@ -163,23 +192,42 @@ impl CalendarSyncManager {
 
         // Prepare Discord ScheduledEvent payload
         let location = format!("https://twitch.tv/{}", twitch_login);
-        let description = format!(
-            "{} (Recurring event)",
-            first_segment
-                .category
-                .as_ref()
-                .map(|c| c.name.as_str())
-                .unwrap_or("")
-        );
+        let description = first_segment.category.as_ref().map(|c| c.name.clone());
+
+        // Use first occurrence for start time, last occurrence (or 2 weeks ahead) for end time
+        let end_time_rfc3339 = if let Some(end_time) = segment_for_end.end_time.as_ref() {
+            // If we have a specific end time from the last segment, use it
+            // But ensure it's not before our target end time
+            let end_time_naive = parse_rfc3339_to_naive(end_time);
+            if let Some(end_naive) = end_time_naive {
+                if end_naive > target_end_time {
+                    // Convert target_end_time to RFC3339
+                    let target_end_utc =
+                        DateTime::<Utc>::from_naive_utc_and_offset(target_end_time, Utc);
+                    Some(target_end_utc.to_rfc3339())
+                } else {
+                    Some(end_time.clone())
+                }
+            } else {
+                // Convert target_end_time to RFC3339
+                let target_end_utc =
+                    DateTime::<Utc>::from_naive_utc_and_offset(target_end_time, Utc);
+                Some(target_end_utc.to_rfc3339())
+            }
+        } else {
+            // No end time in segment, use target_end_time
+            let target_end_utc = DateTime::<Utc>::from_naive_utc_and_offset(target_end_time, Utc);
+            Some(target_end_utc.to_rfc3339())
+        };
 
         let scheduled_event = ScheduledEvent {
             id: existing_discord_event_id.clone(),
             guild_id: integration.discord_guild_id.clone(),
             channel_id: None, // EXTERNAL events (entity_type: 3) cannot have channel_id
             name: title.to_string(),
-            description: Some(description),
+            description,
             scheduled_start_time: first_segment.start_time.clone(),
-            scheduled_end_time: first_segment.end_time.clone(),
+            scheduled_end_time: end_time_rfc3339,
             privacy_level: 2, // GUILD_ONLY
             entity_type: 3,   // EXTERNAL
             entity_metadata: Some(crate::services::discord::EntityMetadata {
