@@ -10,11 +10,18 @@ npx --no-install --prefix frontend lint-staged || {
   exit 1
 }
 
-# Backend: format check
-printf "\n➡️  Backend: checking formatting\n"
+# Backend: format and check
+printf "\n➡️  Backend: formatting code\n"
 if [ -d backend ]; then
+  # Format the code automatically
+  (cd backend && cargo fmt --all) || {
+    echo "\n❌ Backend formatting failed." >&2
+    exit 1
+  }
+  # Verify formatting (should pass after formatting)
+  printf "\n➡️  Backend: verifying formatting\n"
   if ! (cd backend && cargo fmt --all -- --check); then
-    echo "\n❌ Backend formatting check failed. Run 'cargo fmt --all' to fix." >&2
+    echo "\n❌ Backend formatting check failed even after formatting. Please check manually." >&2
     exit 1
   fi
 else
