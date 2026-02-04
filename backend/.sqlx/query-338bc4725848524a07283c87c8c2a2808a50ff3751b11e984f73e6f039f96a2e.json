@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT MAX(last_synced_at) as last_synced_at, COUNT(*) as events_count FROM synced_calendar_events",
+  "describe": {
+    "columns": [
+      {
+        "name": "last_synced_at",
+        "ordinal": 0,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "events_count",
+        "ordinal": 1,
+        "type_info": "Int"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false
+    ]
+  },
+  "hash": "338bc4725848524a07283c87c8c2a2808a50ff3751b11e984f73e6f039f96a2e"
+}
