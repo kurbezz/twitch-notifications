@@ -134,6 +134,43 @@ impl DiscordIntegrationRepository {
         .map_err(AppError::Database)
     }
 
+    /// Find all enabled Discord integrations for a user
+    pub async fn find_enabled_for_user(
+        pool: &SqlitePool,
+        user_id: &str,
+    ) -> AppResult<Vec<DiscordIntegration>> {
+        sqlx::query_as!(
+            DiscordIntegration,
+            r#"
+            SELECT
+                id as "id!: String",
+                user_id as "user_id!: String",
+                discord_guild_id as "discord_guild_id!: String",
+                discord_channel_id as "discord_channel_id!: String",
+                discord_guild_name as "discord_guild_name?: String",
+                discord_channel_name as "discord_channel_name?: String",
+                discord_webhook_url as "discord_webhook_url?: String",
+                is_enabled as "is_enabled!: bool",
+                notify_stream_online as "notify_stream_online!: bool",
+                notify_stream_offline as "notify_stream_offline!: bool",
+                notify_title_change as "notify_title_change!: bool",
+                notify_category_change as "notify_category_change!: bool",
+                notify_reward_redemption as "notify_reward_redemption!: bool",
+                calendar_sync_enabled as "calendar_sync_enabled!: bool",
+                created_at as "created_at!: chrono::NaiveDateTime",
+                updated_at as "updated_at!: chrono::NaiveDateTime"
+            FROM discord_integrations
+            WHERE user_id = ? AND is_enabled = ?
+            ORDER BY created_at DESC
+            "#,
+            user_id,
+            true
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(AppError::Database)
+    }
+
     /// Find Discord integrations by channel id
     pub async fn find_by_channel_id(
         pool: &SqlitePool,

@@ -343,11 +343,17 @@ impl NotificationService {
     }
 
     /// Send the provided notification content to all enabled integrations for the given user and log the results.
+    ///
+    /// Note: This method uses ONLY integration settings (per-integration notify_* flags) to determine
+    /// whether to send notifications. User-level settings (NotificationSettings) are used ONLY for
+    /// message templates, not for blocking notifications. The only exception is `notify_reward_redemption`
+    /// in NotificationSettings, which controls chat bot notifications (separate from integration notifications).
     pub async fn send_notification<'a>(
         &self,
         user_id: &str,
         content: NotificationContent<'a>,
     ) -> AppResult<Vec<NotificationResult>> {
+        // Get user settings - used ONLY for message templates, not for blocking notifications
         let settings = NotificationSettingsRepository::get_or_create(&self.pool, user_id).await?;
         let user = UserRepository::find_by_id(&self.pool, user_id)
             .await?
@@ -426,9 +432,36 @@ impl NotificationService {
                     );
                     enabled
                 }
-                NotificationContent::StreamOffline(_) => integration.notify_stream_offline,
-                NotificationContent::TitleChange(_) => integration.notify_title_change,
-                NotificationContent::CategoryChange(_) => integration.notify_category_change,
+                NotificationContent::StreamOffline(_) => {
+                    let enabled = integration.notify_stream_offline;
+                    tracing::debug!(
+                        "Telegram integration {} (chat_id={}): notify_stream_offline={}",
+                        integration.id,
+                        integration.telegram_chat_id,
+                        enabled
+                    );
+                    enabled
+                }
+                NotificationContent::TitleChange(_) => {
+                    let enabled = integration.notify_title_change;
+                    tracing::debug!(
+                        "Telegram integration {} (chat_id={}): notify_title_change={}",
+                        integration.id,
+                        integration.telegram_chat_id,
+                        enabled
+                    );
+                    enabled
+                }
+                NotificationContent::CategoryChange(_) => {
+                    let enabled = integration.notify_category_change;
+                    tracing::debug!(
+                        "Telegram integration {} (chat_id={}): notify_category_change={}",
+                        integration.id,
+                        integration.telegram_chat_id,
+                        enabled
+                    );
+                    enabled
+                }
                 NotificationContent::RewardRedemption(_) => {
                     // Send reward notifications if the integration setting allows it.
                     // Chat notifications are controlled separately by bot settings.
@@ -507,30 +540,57 @@ impl NotificationService {
 
         // Discord integrations
         let discord_integrations =
-            DiscordIntegrationRepository::find_by_user_id(&self.pool, user_id).await?;
+            DiscordIntegrationRepository::find_enabled_for_user(&self.pool, user_id).await?;
 
         tracing::info!(
-            "Checking Discord integrations for user {}: found {} integration(s)",
+            "Checking Discord integrations for user {}: found {} enabled integration(s)",
             user_id,
             discord_integrations.len()
         );
 
         for integration in discord_integrations {
+
             let should_send = match content {
                 NotificationContent::StreamOnline(_) => {
                     let enabled = integration.notify_stream_online;
                     tracing::debug!(
-                        "Discord integration {} (channel_id={}): is_enabled={}, notify_stream_online={}",
+                        "Discord integration {} (channel_id={}): notify_stream_online={}",
                         integration.id,
                         integration.discord_channel_id,
-                        integration.is_enabled,
                         enabled
                     );
                     enabled
                 }
-                NotificationContent::StreamOffline(_) => integration.notify_stream_offline,
-                NotificationContent::TitleChange(_) => integration.notify_title_change,
-                NotificationContent::CategoryChange(_) => integration.notify_category_change,
+                NotificationContent::StreamOffline(_) => {
+                    let enabled = integration.notify_stream_offline;
+                    tracing::debug!(
+                        "Discord integration {} (channel_id={}): notify_stream_offline={}",
+                        integration.id,
+                        integration.discord_channel_id,
+                        enabled
+                    );
+                    enabled
+                }
+                NotificationContent::TitleChange(_) => {
+                    let enabled = integration.notify_title_change;
+                    tracing::debug!(
+                        "Discord integration {} (channel_id={}): notify_title_change={}",
+                        integration.id,
+                        integration.discord_channel_id,
+                        enabled
+                    );
+                    enabled
+                }
+                NotificationContent::CategoryChange(_) => {
+                    let enabled = integration.notify_category_change;
+                    tracing::debug!(
+                        "Discord integration {} (channel_id={}): notify_category_change={}",
+                        integration.id,
+                        integration.discord_channel_id,
+                        enabled
+                    );
+                    enabled
+                }
                 NotificationContent::RewardRedemption(_) => {
                     // Send reward notifications if the integration setting allows it.
                     // Chat notifications are controlled separately by bot settings.
@@ -544,15 +604,6 @@ impl NotificationService {
                     integration_enabled
                 }
             };
-
-            if !integration.is_enabled {
-                tracing::debug!(
-                    "Skipping Discord integration {} (channel_id={}): integration is disabled",
-                    integration.id,
-                    integration.discord_channel_id
-                );
-                continue;
-            }
 
             if should_send {
                 tracing::info!(
