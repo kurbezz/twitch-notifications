@@ -846,6 +846,23 @@ async fn update_discord_integration(
 
     let updated = DiscordIntegrationRepository::update(&state.db, &id, update).await?;
 
+    // If calendar sync was just enabled (user switched from false -> true), trigger an
+    // immediate background sync for this integration so events appear without waiting
+    // for the periodic worker interval.
+    let enabled_now = request.calendar_sync_enabled.unwrap_or(false);
+    if enabled_now && !existing.calendar_sync_enabled {
+        let state_clone = state.clone();
+        let updated_clone = updated.clone();
+        tokio::spawn(async move {
+            tracing::info!("Triggering immediate calendar sync for integration {}", updated_clone.id);
+            if let Err(e) = crate::services::calendar::CalendarSyncManager::sync_for_integration(&state_clone, &updated_clone).await {
+                tracing::warn!("Immediate calendar sync for integration {} failed: {:?}", updated_clone.id, e);
+            } else {
+                tracing::info!("Immediate calendar sync for integration {} completed", updated_clone.id);
+            }
+        });
+    }
+
     Ok(Json(updated.into()))
 }
 
