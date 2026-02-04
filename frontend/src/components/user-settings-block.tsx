@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import MessageEditor from '@/components/message-editor';
-import { settingsApi, MessagesInfo, authApi, User, ApiError } from '@/lib/api';
+import { settingsApi, MessagesInfo } from '@/lib/api';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '@/hooks/useAuth';
-import { setLanguage } from '@/i18n';
 
 import { Loader2, Edit } from 'lucide-react';
 
@@ -67,18 +65,6 @@ export default function UserSettingsBlock({
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const { t } = useTranslation();
-  const { user } = useAuth();
-  const updateLangMutation = useMutation<User, ApiError, string>({
-    mutationFn: (lang: string) => authApi.updateMe({ lang }),
-  });
-  const handleLanguageChange = (lang: string) => {
-    updateLangMutation.mutate(lang, {
-      onSuccess: () => {
-        setLanguage(lang);
-        queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
-      },
-    });
-  };
 
   useEffect(() => {
     if (messagesData) {
@@ -122,22 +108,7 @@ export default function UserSettingsBlock({
           <h2 className="text-xl font-semibold">{t('user_settings.templates')}</h2>
         </div>
 
-        {!ownerId && (
-          <div className="flex flex-col items-end">
-            <label className="text-sm font-medium">{t('user_settings.language')}</label>
-            <div className="mt-1">
-              <select
-                value={user?.lang ?? 'ru'}
-                onChange={(e) => handleLanguageChange(e.target.value)}
-                disabled={!canManage || updateLangMutation.isPending}
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-              >
-                <option value="ru">{t('user_settings.language_ru')}</option>
-                <option value="en">{t('user_settings.language_en')}</option>
-              </select>
-            </div>
-          </div>
-        )}
+        {/* language selector removed from this component */}
       </div>
 
       <div className="space-y-4">
