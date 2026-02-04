@@ -22,6 +22,11 @@ impl SubscriptionManager {
     /// Since notification flags are now per-integration, we subscribe to all event types
     /// and let the integrations filter which events they care about.
     pub async fn sync_for_user(state: &Arc<AppState>, user: &crate::db::User) -> AppResult<()> {
+        info!(
+            "Syncing EventSub subscriptions for user {} (twitch_id={}, twitch_login={})",
+            user.id, user.twitch_id, user.twitch_login
+        );
+
         // All event types that we support
         let required: Vec<String> = vec![
             "stream.online".to_string(),
@@ -42,6 +47,19 @@ impl SubscriptionManager {
                 );
                 Vec::new()
             });
+
+        info!(
+            "Found {} existing EventSub subscription(s) in DB for user {}",
+            existing_db_subs.len(),
+            user.id
+        );
+
+        for sub in &existing_db_subs {
+            info!(
+                "Existing subscription: type={}, twitch_id={}, status={}",
+                sub.subscription_type, sub.twitch_subscription_id, sub.status
+            );
+        }
 
         // 1) Remove subscriptions that exist in DB but are not required anymore
         for db_sub in &existing_db_subs {
@@ -83,8 +101,17 @@ impl SubscriptionManager {
         for req in required {
             // Skip if already in DB
             if existing_db_subs.iter().any(|s| s.subscription_type == req) {
+                info!(
+                    "Subscription {} already exists in DB for user {}, skipping creation",
+                    req, user.id
+                );
                 continue;
             }
+
+            info!(
+                "Creating missing EventSub subscription: type={} for user {} (twitch_id={})",
+                req, user.id, user.twitch_id
+            );
 
             // Try to create the subscription on Twitch
             let secret = &state.config.jwt.secret;

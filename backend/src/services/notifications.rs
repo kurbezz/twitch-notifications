@@ -355,9 +355,24 @@ impl NotificationService {
         let telegram_integrations =
             TelegramIntegrationRepository::find_enabled_for_user(&self.pool, user_id).await?;
 
+        tracing::info!(
+            "Checking Telegram integrations for user {}: found {} enabled integration(s)",
+            user_id,
+            telegram_integrations.len()
+        );
+
         for integration in telegram_integrations {
             let should_send = match content {
-                NotificationContent::StreamOnline(_) => integration.notify_stream_online,
+                NotificationContent::StreamOnline(_) => {
+                    let enabled = integration.notify_stream_online;
+                    tracing::debug!(
+                        "Telegram integration {} (chat_id={}): notify_stream_online={}",
+                        integration.id,
+                        integration.telegram_chat_id,
+                        enabled
+                    );
+                    enabled
+                }
                 NotificationContent::StreamOffline(_) => integration.notify_stream_offline,
                 NotificationContent::TitleChange(_) => integration.notify_title_change,
                 NotificationContent::CategoryChange(_) => integration.notify_category_change,
@@ -368,6 +383,11 @@ impl NotificationService {
             };
 
             if should_send {
+                tracing::info!(
+                    "Sending notification via Telegram integration {} (chat_id={})",
+                    integration.id,
+                    integration.telegram_chat_id
+                );
                 let res = self
                     .send_telegram_notification(
                         &integration,
@@ -404,6 +424,12 @@ impl NotificationService {
                 }
 
                 results.push(res);
+            } else {
+                tracing::debug!(
+                    "Skipping Telegram integration {} (chat_id={}): notification type not enabled for this integration",
+                    integration.id,
+                    integration.telegram_chat_id
+                );
             }
         }
 
@@ -411,9 +437,25 @@ impl NotificationService {
         let discord_integrations =
             DiscordIntegrationRepository::find_by_user_id(&self.pool, user_id).await?;
 
+        tracing::info!(
+            "Checking Discord integrations for user {}: found {} integration(s)",
+            user_id,
+            discord_integrations.len()
+        );
+
         for integration in discord_integrations {
             let should_send = match content {
-                NotificationContent::StreamOnline(_) => integration.notify_stream_online,
+                NotificationContent::StreamOnline(_) => {
+                    let enabled = integration.notify_stream_online;
+                    tracing::debug!(
+                        "Discord integration {} (channel_id={}): is_enabled={}, notify_stream_online={}",
+                        integration.id,
+                        integration.discord_channel_id,
+                        integration.is_enabled,
+                        enabled
+                    );
+                    enabled
+                }
                 NotificationContent::StreamOffline(_) => integration.notify_stream_offline,
                 NotificationContent::TitleChange(_) => integration.notify_title_change,
                 NotificationContent::CategoryChange(_) => integration.notify_category_change,
@@ -423,7 +465,21 @@ impl NotificationService {
                 }
             };
 
-            if integration.is_enabled && should_send {
+            if !integration.is_enabled {
+                tracing::debug!(
+                    "Skipping Discord integration {} (channel_id={}): integration is disabled",
+                    integration.id,
+                    integration.discord_channel_id
+                );
+                continue;
+            }
+
+            if should_send {
+                tracing::info!(
+                    "Sending notification via Discord integration {} (channel_id={})",
+                    integration.id,
+                    integration.discord_channel_id
+                );
                 let res = self
                     .send_discord_notification(
                         &integration,
@@ -457,7 +513,24 @@ impl NotificationService {
                 }
 
                 results.push(res);
+            } else {
+                tracing::debug!(
+                    "Skipping Discord integration {} (channel_id={}): notification type not enabled for this integration",
+                    integration.id,
+                    integration.discord_channel_id
+                );
             }
+        }
+
+        if results.is_empty() {
+            tracing::warn!(
+                "No notifications were sent for user {} (notification_type={}). Possible reasons: \
+                1) No integrations configured, \
+                2) All integrations disabled, \
+                3) Notification type disabled for all integrations",
+                user_id,
+                ntype.as_str()
+            );
         }
 
         Ok(results)

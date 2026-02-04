@@ -140,9 +140,10 @@ async fn handle_twitch_webhook(
         .map_err(|e| AppError::BadRequest(format!("Invalid payload: {}", e)))?;
 
     tracing::info!(
-        "Received EventSub message: type={}, subscription_type={}",
+        "Received EventSub webhook: message_type={}, subscription_type={}, subscription_id={}",
         message_type,
-        payload.subscription.subscription_type
+        payload.subscription.subscription_type,
+        payload.subscription.id
     );
 
     // Handle based on message type
@@ -288,7 +289,7 @@ async fn handle_notification(state: &Arc<AppState>, payload: &EventSubPayload) -
 
 async fn handle_stream_online(state: &Arc<AppState>, event: StreamOnlineEvent) -> AppResult<()> {
     tracing::info!(
-        "Stream online: {} ({})",
+        "Stream online event received: broadcaster={} (twitch_id={})",
         event.broadcaster_user_name,
         event.broadcaster_user_id
     );
@@ -309,10 +310,19 @@ async fn handle_stream_online(state: &Arc<AppState>, event: StreamOnlineEvent) -
     // Find user by Twitch ID
     let user =
         match UserRepository::find_by_twitch_id(&state.db, &event.broadcaster_user_id).await? {
-            Some(u) => u,
+            Some(u) => {
+                tracing::info!(
+                    "User found for broadcaster {}: user_id={}, twitch_login={}",
+                    event.broadcaster_user_id,
+                    u.id,
+                    u.twitch_login
+                );
+                u
+            }
             None => {
-                tracing::debug!(
-                    "No user found for broadcaster: {}",
+                tracing::warn!(
+                    "No user found for broadcaster: {} (twitch_id={}). Event will be ignored.",
+                    event.broadcaster_user_name,
                     event.broadcaster_user_id
                 );
                 return Ok(());
@@ -326,16 +336,26 @@ async fn handle_stream_online(state: &Arc<AppState>, event: StreamOnlineEvent) -
         .await?;
 
     let (title, category, thumbnail) = if let Some(s) = stream {
+        tracing::debug!(
+            "Stream details retrieved: title='{}', category='{}'",
+            s.title,
+            s.game_name
+        );
         (s.title, s.game_name, Some(s.thumbnail_url))
     } else {
+        tracing::warn!(
+            "Could not retrieve stream details for broadcaster {}, using defaults",
+            event.broadcaster_user_id
+        );
         ("Stream started!".to_string(), "Unknown".to_string(), None)
     };
 
     // Send notifications
     let notification_service = NotificationService::new(state);
 
+    let broadcaster_name = event.broadcaster_user_name.clone();
     let data = StreamOnlineData {
-        streamer_name: event.broadcaster_user_name,
+        streamer_name: broadcaster_name.clone(),
         streamer_avatar: if user.twitch_profile_image_url.is_empty() {
             None
         } else {
@@ -346,15 +366,51 @@ async fn handle_stream_online(state: &Arc<AppState>, event: StreamOnlineEvent) -
         thumbnail_url: thumbnail,
     };
 
+    tracing::info!(
+        "Attempting to send stream online notifications for user {} (broadcaster: {})",
+        user.id,
+        broadcaster_name
+    );
+
     let results = notification_service
         .send_notification(&user.id, NotificationContent::StreamOnline(&data))
         .await?;
 
+    let successful = results.iter().filter(|r| r.success).count();
+    let failed = results.len() - successful;
+
     tracing::info!(
-        "Sent {} stream online notifications for user {}",
+        "Stream online notification results for user {}: total={}, successful={}, failed={}",
+        user.id,
         results.len(),
-        user.id
+        successful,
+        failed
     );
+
+    if results.is_empty() {
+        tracing::warn!(
+            "No notifications were sent for user {} (broadcaster: {}). Check integration settings.",
+            user.id,
+            broadcaster_name
+        );
+    } else {
+        for result in &results {
+            if result.success {
+                tracing::info!(
+                    "Notification sent successfully: destination_type={}, destination_id={}",
+                    result.destination_type,
+                    result.destination_id
+                );
+            } else {
+                tracing::warn!(
+                    "Notification failed: destination_type={}, destination_id={}, error={:?}",
+                    result.destination_type,
+                    result.destination_id,
+                    result.error
+                );
+            }
+        }
+    }
 
     Ok(())
 }
