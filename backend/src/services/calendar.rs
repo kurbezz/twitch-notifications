@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
@@ -74,6 +74,181 @@ impl CalendarSyncManager {
     async fn delete_db_row(state: &Arc<AppState>, id: &str) {
         if let Err(e) = SyncedCalendarRepository::delete(&state.db, id).await {
             warn!("Failed to delete synced calendar event {}: {:?}", id, e);
+        }
+    }
+
+    // Process a group of recurring segments: create one Discord event for the entire group
+    async fn process_recurring_group(
+        state: &Arc<AppState>,
+        integration: &DiscordIntegration,
+        title: &str,
+        segments: &[&ScheduleSegment],
+        twitch_login: &str,
+    ) {
+        let now = Utc::now().naive_utc();
+
+        // Find the first future occurrence in the group
+        let mut first_future_segment: Option<&ScheduleSegment> = None;
+        let mut first_future_start: Option<NaiveDateTime> = None;
+
+        for segment in segments {
+            let start_time = match parse_rfc3339_to_naive(&segment.start_time) {
+                Some(dt) => dt,
+                None => continue,
+            };
+
+            if start_time >= now
+                && (first_future_start.is_none() || start_time < first_future_start.unwrap())
+            {
+                first_future_start = Some(start_time);
+                first_future_segment = Some(segment);
+            }
+        }
+
+        // If no future occurrences, skip creating Discord event
+        let Some(first_segment) = first_future_segment else {
+            return;
+        };
+
+        // Upsert DB rows for all segments in the group
+        let mut records = Vec::new();
+        for segment in segments {
+            let start_time = match parse_rfc3339_to_naive(&segment.start_time) {
+                Some(dt) => dt,
+                None => continue,
+            };
+
+            let end_time = segment
+                .end_time
+                .as_ref()
+                .and_then(|s| parse_rfc3339_to_naive(s));
+
+            let create = CreateSyncedCalendarEvent {
+                twitch_segment_id: segment.id.clone(),
+                discord_integration_id: Some(integration.id.clone()),
+                title: segment.title.clone(),
+                start_time,
+                end_time,
+                category_name: segment.category.as_ref().map(|c| c.name.clone()),
+                is_recurring: true,
+            };
+
+            match SyncedCalendarRepository::upsert_by_twitch_segment_and_integration(
+                &state.db,
+                &integration.user_id,
+                create,
+            )
+            .await
+            {
+                Ok(r) => records.push(r),
+                Err(e) => {
+                    warn!(
+                        "Failed to upsert synced calendar event for recurring segment {}: {:?}",
+                        segment.id, e
+                    );
+                }
+            }
+        }
+
+        if records.is_empty() {
+            return;
+        }
+
+        // Check if we already have a Discord event for this recurring group
+        // (check if any record in the group has a discord_event_id)
+        let existing_discord_event_id = records
+            .iter()
+            .find_map(|r| r.discord_event_id.as_ref())
+            .cloned();
+
+        // Prepare Discord ScheduledEvent payload
+        let location = format!("https://twitch.tv/{}", twitch_login);
+        let description = format!(
+            "{} (Recurring event)",
+            first_segment
+                .category
+                .as_ref()
+                .map(|c| c.name.as_str())
+                .unwrap_or("")
+        );
+
+        let scheduled_event = ScheduledEvent {
+            id: existing_discord_event_id.clone(),
+            guild_id: integration.discord_guild_id.clone(),
+            channel_id: None, // EXTERNAL events (entity_type: 3) cannot have channel_id
+            name: title.to_string(),
+            description: Some(description),
+            scheduled_start_time: first_segment.start_time.clone(),
+            scheduled_end_time: first_segment.end_time.clone(),
+            privacy_level: 2, // GUILD_ONLY
+            entity_type: 3,   // EXTERNAL
+            entity_metadata: Some(crate::services::discord::EntityMetadata {
+                location: Some(location),
+            }),
+        };
+
+        // Ensure we have a Discord service available
+        let discord_guard = state.discord.read().await;
+        let discord = discord_guard.as_ref();
+        if discord.is_none() {
+            warn!(
+                "Discord service not available; skipping Discord event sync for recurring group {}",
+                title
+            );
+            return;
+        }
+        let discord = discord.unwrap();
+
+        // Create or update Discord event
+        let discord_event_id = if let Some(existing_id) = existing_discord_event_id {
+            // Update existing event
+            match discord
+                .update_scheduled_event(
+                    &integration.discord_guild_id,
+                    &existing_id,
+                    scheduled_event,
+                )
+                .await
+            {
+                Ok(_) => Some(existing_id),
+                Err(e) => {
+                    warn!(
+                        "Failed to update Discord scheduled event for recurring group {}: {:?}",
+                        title, e
+                    );
+                    None
+                }
+            }
+        } else {
+            // Create new event
+            match discord.create_scheduled_event(scheduled_event).await {
+                Ok(created) => created.id,
+                Err(e) => {
+                    warn!(
+                        "Failed to create Discord scheduled event for recurring group {}: {:?}",
+                        title, e
+                    );
+                    None
+                }
+            }
+        };
+
+        // Update all records in the group with the same discord_event_id
+        if let Some(event_id) = discord_event_id {
+            for record in records {
+                if let Err(e) = SyncedCalendarRepository::update_discord_event_id(
+                    &state.db,
+                    &record.id,
+                    Some(&event_id),
+                )
+                .await
+                {
+                    warn!(
+                        "Failed to store Discord event id for recurring segment {}: {:?}",
+                        record.twitch_segment_id, e
+                    );
+                }
+            }
         }
     }
 
@@ -356,7 +531,11 @@ impl CalendarSyncManager {
         // Build a set of segment ids that are currently present so we can remove stale DB rows later.
         let mut segment_ids: HashSet<String> = HashSet::new();
 
-        for segment in schedule.segments.into_iter() {
+        // Separate segments into recurring and non-recurring
+        let mut recurring_segments: Vec<&ScheduleSegment> = Vec::new();
+        let mut non_recurring_segments: Vec<&ScheduleSegment> = Vec::new();
+
+        for segment in schedule.segments.iter() {
             segment_ids.insert(segment.id.clone());
 
             // If the segment has been canceled (Twitch provides `canceled_until`), treat it as removed.
@@ -384,13 +563,39 @@ impl CalendarSyncManager {
                 continue;
             }
 
-            // Process segment: upsert DB row and ensure Discord scheduled event is created/updated
-            Self::process_segment(state, integration, &segment, &user.twitch_login).await;
+            if segment.is_recurring {
+                recurring_segments.push(segment);
+            } else {
+                non_recurring_segments.push(segment);
+            }
+        }
 
-            // Add a small delay between requests to avoid hitting Discord rate limits
-            // Discord allows 5 requests per 5 seconds for scheduled events endpoints
+        // Process non-recurring segments individually
+        for segment in non_recurring_segments {
+            Self::process_segment(state, integration, segment, &user.twitch_login).await;
             tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
-        } // end for segments
+        }
+
+        // Group recurring segments by title and process each group as one Discord event
+        let mut recurring_groups: HashMap<String, Vec<&ScheduleSegment>> = HashMap::new();
+        for segment in recurring_segments {
+            recurring_groups
+                .entry(segment.title.clone())
+                .or_default()
+                .push(segment);
+        }
+
+        for (title, segments) in recurring_groups {
+            Self::process_recurring_group(
+                state,
+                integration,
+                &title,
+                &segments,
+                &user.twitch_login,
+            )
+            .await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
+        }
 
         // Cleanup: remove DB rows (and their Discord events) for segments that no longer exist
         let existing_rows =
