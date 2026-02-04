@@ -4,7 +4,7 @@ use axum::{extract::State, routing::{get, post}, Json, Router};
 use serde_json::json;
 
 use crate::AppState;
-use crate::db::{DiscordIntegrationRepository, SyncedCalendarRepository};
+use crate::db::DiscordIntegrationRepository;
 use crate::error::AppResult;
 use crate::routes::auth::AuthUser;
 
@@ -50,9 +50,11 @@ async fn get_status(State(state): State<Arc<AppState>>, AuthUser(_user): AuthUse
     .await
     .map_err(crate::error::AppError::Database)?;
 
-    let last_sync = row.last_synced_at.map(|dt| chrono::DateTime::<chrono::Utc>::from_utc(dt, chrono::Utc).to_rfc3339());
+    let last_sync = row
+        .last_synced_at
+        .map(|dt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc).to_rfc3339());
 
-    let events_count = row.events_count.unwrap_or(0) as i64;
+    let events_count = row.events_count as i64;
 
     Ok(Json(json!({
         "enabled": enabled,
