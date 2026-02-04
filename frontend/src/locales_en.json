@@ -206,7 +206,10 @@
   },
   "settings": {
     "title": "Settings",
-    "subtitle": "Configure notifications and message templates"
+    "subtitle": "Configure notifications and message templates",
+    "language_saving": "Saving language...",
+    "language_saved": "Language saved",
+    "language_saving_error": "Failed to save language"
   },
   "telegram": {
     "logo_alt": "Telegram avatar",

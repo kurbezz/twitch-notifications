@@ -8,6 +8,8 @@
 
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
+import { authApi } from '@/lib/api';
+import { toast } from '@/hooks/useToast';
 
 import en from './locales_en.json';
 import ru from './locales_ru.json';
@@ -55,6 +57,29 @@ i18n.on('languageChanged', (lng) => {
     localStorage.setItem('i18nextLng', lng);
   } catch {
     // ignore errors (e.g. private browsing)
+  }
+  // Persist preferred language on the server for authenticated users.
+  // Show a small toast indicating success or failure. This is best-effort
+  // and does not block the UI.
+  try {
+    const t = toast({ title: i18n.t('settings.language_saving') });
+    void authApi
+      .updateMe({ lang: lng })
+      .then(() => {
+        t.update({
+          title: i18n.t('settings.language_saved'),
+          variant: 'success',
+          description: undefined,
+        });
+        // Auto-dismiss after a short delay
+        setTimeout(() => t.dismiss(), 1500);
+      })
+      .catch(() => {
+        t.update({ title: i18n.t('settings.language_saving_error'), variant: 'destructive' });
+        // Let user dismiss manually after a while
+      });
+  } catch {
+    // ignore any synchronous errors
   }
 });
 
