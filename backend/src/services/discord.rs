@@ -293,7 +293,11 @@ impl DiscordService {
         } else {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            tracing::warn!("Discord membership check failed: status={} body={}", status, error_text);
+            tracing::warn!(
+                "Discord membership check failed: status={} body={}",
+                status,
+                error_text
+            );
             Err(AppError::Discord(format!(
                 "Discord API error ({}): {}",
                 status, error_text
@@ -352,15 +356,30 @@ impl DiscordService {
             match serde_json::from_str::<Vec<DiscordRole>>(&body) {
                 Ok(r) => Ok(r),
                 Err(e) => {
-                    tracing::warn!("Failed to parse roles response for guild {}: {} -- body: {}", guild_id, e, body);
-                    Err(AppError::Discord(format!("Failed to parse roles response: {}", e)))
+                    tracing::warn!(
+                        "Failed to parse roles response for guild {}: {} -- body: {}",
+                        guild_id,
+                        e,
+                        body
+                    );
+                    Err(AppError::Discord(format!(
+                        "Failed to parse roles response: {}",
+                        e
+                    )))
                 }
             }
         } else {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            tracing::warn!("Discord get_guild_roles failed: status={} body={}", status, error_text);
-            Err(AppError::Discord(format!("Discord API error ({}): {}", status, error_text)))
+            tracing::warn!(
+                "Discord get_guild_roles failed: status={} body={}",
+                status,
+                error_text
+            );
+            Err(AppError::Discord(format!(
+                "Discord API error ({}): {}",
+                status, error_text
+            )))
         }
     }
 
@@ -386,7 +405,10 @@ impl DiscordService {
                 Ok(m) => Ok(m),
                 Err(e) => {
                     tracing::warn!("Failed to parse guild member response for guild {} user {}: {} -- body: {}", guild_id, user_id, e, body);
-                    Err(AppError::Discord(format!("Failed to parse member response: {}", e)))
+                    Err(AppError::Discord(format!(
+                        "Failed to parse member response: {}",
+                        e
+                    )))
                 }
             }
         } else if response.status() == reqwest::StatusCode::NOT_FOUND {
@@ -394,8 +416,15 @@ impl DiscordService {
         } else {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            tracing::warn!("Discord get_guild_member failed: status={} body={}", status, error_text);
-            Err(AppError::Discord(format!("Discord API error ({}): {}", status, error_text)))
+            tracing::warn!(
+                "Discord get_guild_member failed: status={} body={}",
+                status,
+                error_text
+            );
+            Err(AppError::Discord(format!(
+                "Discord API error ({}): {}",
+                status, error_text
+            )))
         }
     }
 
@@ -410,7 +439,12 @@ impl DiscordService {
         let member = match self.get_guild_member(guild_id, user_id).await {
             Ok(m) => m,
             Err(e) => {
-                tracing::warn!("Failed to fetch guild member {} for guild {}: {:?}", user_id, guild_id, e);
+                tracing::warn!(
+                    "Failed to fetch guild member {} for guild {}: {:?}",
+                    user_id,
+                    guild_id,
+                    e
+                );
                 return Ok(false);
             }
         };
@@ -598,7 +632,8 @@ where
         where
             E: serde::de::Error,
         {
-            v.parse::<u64>().map_err(|e| E::custom(format!("invalid permissions string: {}", e)))
+            v.parse::<u64>()
+                .map_err(|e| E::custom(format!("invalid permissions string: {}", e)))
         }
 
         fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
