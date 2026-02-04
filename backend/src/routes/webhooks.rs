@@ -671,17 +671,18 @@ async fn handle_channel_points_redemption(
         broadcaster_name: event.broadcaster_user_name,
     };
 
+    // Send to integrations (Telegram/Discord) - controlled by integration settings
     let results = notification_service
         .send_notification(&user.id, NotificationContent::RewardRedemption(&data))
         .await?;
 
     tracing::info!(
-        "Sent {} reward redemption notifications for user {}",
+        "Sent {} reward redemption notifications to integrations for user {}",
         results.len(),
         user.id
     );
 
-    // Send chat message if enabled
+    // Send chat message if enabled - controlled by bot settings
     let settings = NotificationSettingsRepository::get_or_create(&state.db, &user.id).await?;
     if settings.notify_reward_redemption {
         // Normalize placeholders (convert {{...}} -> {...})

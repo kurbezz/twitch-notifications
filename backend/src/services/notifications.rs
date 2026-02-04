@@ -377,17 +377,16 @@ impl NotificationService {
                 NotificationContent::TitleChange(_) => integration.notify_title_change,
                 NotificationContent::CategoryChange(_) => integration.notify_category_change,
                 NotificationContent::RewardRedemption(_) => {
-                    // Only send reward notifications if both the integration and the user-level setting allow it.
+                    // Send reward notifications if the integration setting allows it.
+                    // Chat notifications are controlled separately by bot settings.
                     let integration_enabled = integration.notify_reward_redemption;
-                    let user_setting_enabled = settings.notify_reward_redemption;
                     tracing::debug!(
-                        "Telegram integration {} (chat_id={}): notify_reward_redemption={}, user_setting_notify_reward_redemption={}",
+                        "Telegram integration {} (chat_id={}): notify_reward_redemption={}",
                         integration.id,
                         integration.telegram_chat_id,
-                        integration_enabled,
-                        user_setting_enabled
+                        integration_enabled
                     );
-                    integration_enabled && user_setting_enabled
+                    integration_enabled
                 }
             };
 
@@ -482,17 +481,16 @@ impl NotificationService {
                 NotificationContent::TitleChange(_) => integration.notify_title_change,
                 NotificationContent::CategoryChange(_) => integration.notify_category_change,
                 NotificationContent::RewardRedemption(_) => {
-                    // Require both the integration flag and the user-level flag for reward notifications.
+                    // Send reward notifications if the integration setting allows it.
+                    // Chat notifications are controlled separately by bot settings.
                     let integration_enabled = integration.notify_reward_redemption;
-                    let user_setting_enabled = settings.notify_reward_redemption;
                     tracing::debug!(
-                        "Discord integration {} (channel_id={}): notify_reward_redemption={}, user_setting_notify_reward_redemption={}",
+                        "Discord integration {} (channel_id={}): notify_reward_redemption={}",
                         integration.id,
                         integration.discord_channel_id,
-                        integration_enabled,
-                        user_setting_enabled
+                        integration_enabled
                     );
-                    integration_enabled && user_setting_enabled
+                    integration_enabled
                 }
             };
 
@@ -569,10 +567,8 @@ impl NotificationService {
         if results.is_empty() {
             let user_setting_info = match content {
                 NotificationContent::RewardRedemption(_) => {
-                    format!(
-                        ", user_setting_notify_reward_redemption={}",
-                        settings.notify_reward_redemption
-                    )
+                    // Chat notifications are controlled separately by bot settings
+                    String::new()
                 }
                 _ => String::new(),
             };
@@ -580,15 +576,10 @@ impl NotificationService {
                 "No notifications were sent for user {} (notification_type={}{}). Possible reasons: \
                 1) No integrations configured, \
                 2) All integrations disabled, \
-                3) Notification type disabled for all integrations{}",
+                3) Notification type disabled for all integrations",
                 user_id,
                 ntype.as_str(),
-                user_setting_info,
-                if matches!(content, NotificationContent::RewardRedemption(_)) {
-                    ", 4) User-level notify_reward_redemption setting disabled"
-                } else {
-                    ""
-                }
+                user_setting_info
             );
         }
 
