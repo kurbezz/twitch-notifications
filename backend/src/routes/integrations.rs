@@ -358,25 +358,49 @@ async fn create_telegram_integration(
         .await?
         .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
-    if owner.telegram_user_id.is_none() {
-        tracing::warn!(
-            "Cannot create telegram integration: owner {} has not linked a Telegram account",
-            owner_id
-        );
-        return Err(AppError::Validation(crate::i18n::t(
-            "validation.owner_telegram_not_linked",
-        )));
-    }
-
-    // Determine effective chat type and chat id. For private chats, use the owner's telegram_user_id.
+    // Determine effective chat type and chat id.
     let chat_type = request
         .telegram_chat_type
         .clone()
         .or(Some("private".to_string()));
 
+    // For private chats: when creating for another user, use the editor's telegram_user_id;
+    // when creating for self, use the owner's telegram_user_id.
     let mut chat_id_to_check = if chat_type.as_deref() == Some("private") {
-        owner.telegram_user_id.clone().unwrap()
+        if owner_id != user.id {
+            // Creating personal chat integration for another user - use editor's telegram_user_id
+            user.telegram_user_id.clone().ok_or_else(|| {
+                tracing::warn!(
+                    "Cannot create telegram integration: editor {} has not linked a Telegram account",
+                    user.id
+                );
+                AppError::Validation(crate::i18n::t(
+                    "validation.owner_telegram_not_linked",
+                ))
+            })?
+        } else {
+            // Creating personal chat integration for self - use owner's telegram_user_id
+            owner.telegram_user_id.clone().ok_or_else(|| {
+                tracing::warn!(
+                    "Cannot create telegram integration: owner {} has not linked a Telegram account",
+                    owner_id
+                );
+                AppError::Validation(crate::i18n::t(
+                    "validation.owner_telegram_not_linked",
+                ))
+            })?
+        }
     } else {
+        // For non-private chats, validate that owner has linked Telegram account
+        if owner.telegram_user_id.is_none() {
+            tracing::warn!(
+                "Cannot create telegram integration: owner {} has not linked a Telegram account",
+                owner_id
+            );
+            return Err(AppError::Validation(crate::i18n::t(
+                "validation.owner_telegram_not_linked",
+            )));
+        }
         request.telegram_chat_id.clone()
     };
 

@@ -378,7 +378,16 @@ impl NotificationService {
                 NotificationContent::CategoryChange(_) => integration.notify_category_change,
                 NotificationContent::RewardRedemption(_) => {
                     // Only send reward notifications if both the integration and the user-level setting allow it.
-                    integration.notify_reward_redemption && settings.notify_reward_redemption
+                    let integration_enabled = integration.notify_reward_redemption;
+                    let user_setting_enabled = settings.notify_reward_redemption;
+                    tracing::debug!(
+                        "Telegram integration {} (chat_id={}): notify_reward_redemption={}, user_setting_notify_reward_redemption={}",
+                        integration.id,
+                        integration.telegram_chat_id,
+                        integration_enabled,
+                        user_setting_enabled
+                    );
+                    integration_enabled && user_setting_enabled
                 }
             };
 
@@ -425,10 +434,23 @@ impl NotificationService {
 
                 results.push(res);
             } else {
+                let reason = match content {
+                    NotificationContent::RewardRedemption(_) => {
+                        if !integration.notify_reward_redemption {
+                            "integration notify_reward_redemption disabled"
+                        } else if !settings.notify_reward_redemption {
+                            "user-level notify_reward_redemption setting disabled"
+                        } else {
+                            "notification type not enabled"
+                        }
+                    }
+                    _ => "notification type not enabled for this integration",
+                };
                 tracing::debug!(
-                    "Skipping Telegram integration {} (chat_id={}): notification type not enabled for this integration",
+                    "Skipping Telegram integration {} (chat_id={}): {}",
                     integration.id,
-                    integration.telegram_chat_id
+                    integration.telegram_chat_id,
+                    reason
                 );
             }
         }
@@ -461,7 +483,16 @@ impl NotificationService {
                 NotificationContent::CategoryChange(_) => integration.notify_category_change,
                 NotificationContent::RewardRedemption(_) => {
                     // Require both the integration flag and the user-level flag for reward notifications.
-                    integration.notify_reward_redemption && settings.notify_reward_redemption
+                    let integration_enabled = integration.notify_reward_redemption;
+                    let user_setting_enabled = settings.notify_reward_redemption;
+                    tracing::debug!(
+                        "Discord integration {} (channel_id={}): notify_reward_redemption={}, user_setting_notify_reward_redemption={}",
+                        integration.id,
+                        integration.discord_channel_id,
+                        integration_enabled,
+                        user_setting_enabled
+                    );
+                    integration_enabled && user_setting_enabled
                 }
             };
 
@@ -514,22 +545,47 @@ impl NotificationService {
 
                 results.push(res);
             } else {
+                let reason = match content {
+                    NotificationContent::RewardRedemption(_) => {
+                        if !integration.notify_reward_redemption {
+                            "integration notify_reward_redemption disabled"
+                        } else if !settings.notify_reward_redemption {
+                            "user-level notify_reward_redemption setting disabled"
+                        } else {
+                            "notification type not enabled"
+                        }
+                    }
+                    _ => "notification type not enabled for this integration",
+                };
                 tracing::debug!(
-                    "Skipping Discord integration {} (channel_id={}): notification type not enabled for this integration",
+                    "Skipping Discord integration {} (channel_id={}): {}",
                     integration.id,
-                    integration.discord_channel_id
+                    integration.discord_channel_id,
+                    reason
                 );
             }
         }
 
         if results.is_empty() {
+            let user_setting_info = match content {
+                NotificationContent::RewardRedemption(_) => {
+                    format!(", user_setting_notify_reward_redemption={}", settings.notify_reward_redemption)
+                }
+                _ => String::new(),
+            };
             tracing::warn!(
-                "No notifications were sent for user {} (notification_type={}). Possible reasons: \
+                "No notifications were sent for user {} (notification_type={}{}). Possible reasons: \
                 1) No integrations configured, \
                 2) All integrations disabled, \
-                3) Notification type disabled for all integrations",
+                3) Notification type disabled for all integrations{}",
                 user_id,
-                ntype.as_str()
+                ntype.as_str(),
+                user_setting_info,
+                if matches!(content, NotificationContent::RewardRedemption(_)) {
+                    ", 4) User-level notify_reward_redemption setting disabled"
+                } else {
+                    ""
+                }
             );
         }
 
