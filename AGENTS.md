@@ -122,6 +122,23 @@ to run builds/tests and to align with project conventions.
 - Backend reads config from env (`backend/src/config.rs`) and `.env` in `backend/`.
 - Local SQLite DB exists at `data/app.db`.
 
+- Notifications: you can notify users about events using the `ntfy_agents_send` command.
+  - Note: `ntfy_agents_send` is often defined as a shell function in an interactive shell (for example in `~/.zshrc`). Non-interactive shells (CI, systemd, cron) won't load your interactive rc by default.
+  - Run examples:
+
+```bash
+# Run in an interactive zsh so your shell functions are available
+zsh -i -c 'ntfy_agents_send <args>'
+
+# Or source your shell rc before calling (from a script)
+source "$HOME/.zshrc" && ntfy_agents_send <args>
+
+# Fallback (HTTP) - send a simple message via the public ntfy.sh service
+curl -d 'Test notification' https://ntfy.sh/<topic>
+```
+
+  - Tips: for automation prefer a wrapper script (e.g. `scripts/notify.sh`) or an installed CLI binary so notifications work from non-interactive environments without sourcing shell RC files.
+
 ## Cursor/Copilot rules
 - No `.cursorrules`, `.cursor/rules/`, or `.github/copilot-instructions.md` found.
 

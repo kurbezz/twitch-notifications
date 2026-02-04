@@ -18,6 +18,94 @@ use crate::error::{AppError, AppErrorWithDetails, AppResult};
 use crate::routes::auth::AuthUser;
 use crate::AppState;
 
+// Helper for selecting which discord account id to use when checking permissions.
+// Returns Err(AppError::BadRequest) when the selected account is not linked.
+fn select_discord_account_to_check(
+    owner_id: &str,
+    auth_user: &crate::db::User,
+    owner_user: &crate::db::User,
+) -> Result<String, AppError> {
+    if owner_id == auth_user.id {
+        owner_user
+            .discord_user_id
+            .clone()
+            .ok_or_else(|| AppError::BadRequest(crate::i18n::t("bad_request.no_discord_linked")))
+    } else {
+        auth_user
+            .discord_user_id
+            .clone()
+            .ok_or_else(|| AppError::BadRequest(crate::i18n::t("bad_request.no_discord_linked")))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::User;
+    use chrono::Utc;
+
+    fn make_user_with_discord(id: &str, discord_id: Option<&str>) -> User {
+        let now = Utc::now().naive_utc();
+        User {
+            id: id.to_string(),
+            twitch_id: "t1".to_string(),
+            twitch_login: "login".to_string(),
+            twitch_display_name: "display".to_string(),
+            twitch_email: "e@example.com".to_string(),
+            twitch_profile_image_url: "".to_string(),
+            twitch_access_token: "a".to_string(),
+            twitch_refresh_token: "r".to_string(),
+            twitch_token_expires_at: now,
+            telegram_user_id: None,
+            telegram_username: None,
+            telegram_photo_url: None,
+            discord_user_id: discord_id.map(|s| s.to_string()),
+            discord_username: discord_id.map(|s| format!("user#1234-{}", s)),
+            discord_avatar_url: discord_id.map(|s| format!("https://cdn/{}.png", s)),
+            lang: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn selects_owner_discord_when_owner_is_auth() {
+        let owner = make_user_with_discord("owner", Some("owner_disc"));
+        // auth_user has same id (owner creating for themselves)
+        let auth_user = owner.clone();
+
+        let res = select_discord_account_to_check(&owner.id, &auth_user, &owner);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), "owner_disc".to_string());
+    }
+
+    #[test]
+    fn selects_auth_discord_when_creating_on_behalf() {
+        let owner = make_user_with_discord("owner", None);
+        let auth_user = make_user_with_discord("grantee", Some("grantee_disc"));
+
+        let res = select_discord_account_to_check(&owner.id, &auth_user, &owner);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), "grantee_disc".to_string());
+    }
+
+    #[test]
+    fn returns_error_when_selected_account_not_linked() {
+        let owner = make_user_with_discord("owner", None);
+        // auth_user also missing discord
+        let auth_user = make_user_with_discord("owner", None);
+
+        let res = select_discord_account_to_check(&owner.id, &auth_user, &owner);
+        match res {
+            Err(AppError::BadRequest(msg)) => {
+                // message should be localized key translation (non-empty)
+                assert!(!msg.is_empty());
+            }
+            other => panic!("expected BadRequest, got: {:?}", other),
+        }
+    }
+}
+
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         // Telegram routes
@@ -629,16 +717,19 @@ async fn create_discord_integration(
         }
     }
 
-    // Проверим, что у владельца привязан Discord и он имеет права админа/управления сервером
+    // Get owner user record. When creating integration on behalf of another user
+    // we allow the requesting user (grantee) to use their linked Discord account
+    // to check/manage server permissions. When creating for self, require the
+    // owner's Discord to be linked.
     let owner_user = UserRepository::find_by_id(&state.db, &owner_id)
         .await?
         .ok_or_else(|| AppError::NotFound(crate::i18n::t("not_found.user")))?;
-    let owner_discord_user_id = owner_user
-        .discord_user_id
-        .clone()
-        .ok_or_else(|| AppError::BadRequest(crate::i18n::t("bad_request.no_discord_linked")))?;
 
-    // Убедимся, что сервис Discord доступен и проверим права владельца на сервере
+    // Determine which Discord account to use for permission checks and validate it.
+    // See `select_discord_account_to_check` below for testable logic.
+    let discord_account_to_check = select_discord_account_to_check(&owner_id, &user, &owner_user)?;
+
+    // Убедимся, что сервис Discord доступен и проверим права выбранного аккаунта на сервере
     let discord_guard = state.discord.read().await;
     let discord = discord_guard.as_ref().ok_or_else(|| {
         AppError::ServiceUnavailable(crate::i18n::t(
@@ -647,7 +738,7 @@ async fn create_discord_integration(
     })?;
 
     let has_manage = discord
-        .user_has_manage_permissions(&request.discord_guild_id, &owner_discord_user_id)
+        .user_has_manage_permissions(&request.discord_guild_id, &discord_account_to_check)
         .await?;
 
     if !has_manage {
