@@ -293,7 +293,10 @@ impl DiscordService {
         } else {
             let error_text = response.text().await.unwrap_or_default();
             tracing::warn!("Discord membership check failed: body={}", error_text);
-            Err(AppError::Discord(format!("Discord API error: {}", error_text)))
+            Err(AppError::Discord(format!(
+                "Discord API error: {}",
+                error_text
+            )))
         }
     }
 
@@ -362,7 +365,10 @@ impl DiscordService {
         } else {
             let error_text = response.text().await.unwrap_or_default();
             tracing::warn!("Discord get_guild_roles failed: body={}", error_text);
-            Err(AppError::Discord(format!("Discord API error: {}", error_text)))
+            Err(AppError::Discord(format!(
+                "Discord API error: {}",
+                error_text
+            )))
         }
     }
 
@@ -399,7 +405,10 @@ impl DiscordService {
         } else {
             let error_text = response.text().await.unwrap_or_default();
             tracing::warn!("Discord get_guild_member failed: body={}", error_text);
-            Err(AppError::Discord(format!("Discord API error: {}", error_text)))
+            Err(AppError::Discord(format!(
+                "Discord API error: {}",
+                error_text
+            )))
         }
     }
 
@@ -585,7 +594,6 @@ fn deserialize_permissions<'de, D>(deserializer: D) -> Result<u64, D::Error>
 where
     D: serde::de::Deserializer<'de>,
 {
-    
     struct PermVisitor;
 
     impl<'de> serde::de::Visitor<'de> for PermVisitor {
