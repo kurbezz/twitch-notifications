@@ -531,7 +531,7 @@ mod tests {
     use super::*;
     use chrono::Utc;
     use sqlx::sqlite::SqlitePoolOptions;
-    use sqlx::SqlitePool;
+    // `SqlitePool` is already imported at the module level; avoid unused import here.
     use uuid::Uuid;
 
     #[tokio::test]

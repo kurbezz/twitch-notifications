@@ -291,17 +291,9 @@ impl DiscordService {
         } else if response.status() == reqwest::StatusCode::NOT_FOUND {
             Ok(false)
         } else {
-            let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            tracing::warn!(
-                "Discord membership check failed: status={} body={}",
-                status,
-                error_text
-            );
-            Err(AppError::Discord(format!(
-                "Discord API error ({}): {}",
-                status, error_text
-            )))
+            tracing::warn!("Discord membership check failed: body={}", error_text);
+            Err(AppError::Discord(format!("Discord API error: {}", error_text)))
         }
     }
 
@@ -351,7 +343,6 @@ impl DiscordService {
             .map_err(|e| AppError::Discord(format!("Failed to get guild roles: {}", e)))?;
 
         if response.status().is_success() {
-            let status = response.status();
             let body = response.text().await.unwrap_or_default();
             match serde_json::from_str::<Vec<DiscordRole>>(&body) {
                 Ok(r) => Ok(r),
@@ -369,17 +360,9 @@ impl DiscordService {
                 }
             }
         } else {
-            let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            tracing::warn!(
-                "Discord get_guild_roles failed: status={} body={}",
-                status,
-                error_text
-            );
-            Err(AppError::Discord(format!(
-                "Discord API error ({}): {}",
-                status, error_text
-            )))
+            tracing::warn!("Discord get_guild_roles failed: body={}", error_text);
+            Err(AppError::Discord(format!("Discord API error: {}", error_text)))
         }
     }
 
@@ -414,17 +397,9 @@ impl DiscordService {
         } else if response.status() == reqwest::StatusCode::NOT_FOUND {
             Err(AppError::NotFound("Member not found".to_string()))
         } else {
-            let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            tracing::warn!(
-                "Discord get_guild_member failed: status={} body={}",
-                status,
-                error_text
-            );
-            Err(AppError::Discord(format!(
-                "Discord API error ({}): {}",
-                status, error_text
-            )))
+            tracing::warn!("Discord get_guild_member failed: body={}", error_text);
+            Err(AppError::Discord(format!("Discord API error: {}", error_text)))
         }
     }
 
@@ -610,8 +585,7 @@ fn deserialize_permissions<'de, D>(deserializer: D) -> Result<u64, D::Error>
 where
     D: serde::de::Deserializer<'de>,
 {
-    use serde::de::Error as _;
-
+    
     struct PermVisitor;
 
     impl<'de> serde::de::Visitor<'de> for PermVisitor {
