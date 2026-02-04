@@ -10,42 +10,44 @@ npx --no-install --prefix frontend lint-staged || {
   exit 1
 }
 
-# Backend: format and check
-printf "\n➡️  Backend: formatting code\n"
+# Backend: format check, format, and clippy
 if [ -d backend ]; then
-  # Format the code automatically
-  (cd backend && cargo fmt --all) || {
-    echo "\n❌ Backend formatting failed." >&2
-    exit 1
-  }
-  # Add any formatted Rust files back to staging
-  # Find all modified .rs files in backend directory and add them
-  git diff --name-only --diff-filter=ACM | grep '^backend/.*\.rs$' | while read -r file; do
-    git add "$file" 2>/dev/null || true
-  done
-  # Also add any unstaged .rs files that were modified by formatter
-  git diff --name-only | grep '^backend/.*\.rs$' | while read -r file; do
-    git add "$file" 2>/dev/null || true
-  done
-  # Verify formatting (should pass after formatting)
-  printf "\n➡️  Backend: verifying formatting\n"
+  # First, check if code is already formatted
+  printf "\n➡️  Backend: checking formatting\n"
   if ! (cd backend && cargo fmt --all -- --check); then
-    echo "\n❌ Backend formatting check failed even after formatting. Please check manually." >&2
-    exit 1
+    echo "\n⚠️  Backend code is not formatted. Formatting automatically..."
+    # Format the code automatically
+    (cd backend && cargo fmt --all) || {
+      echo "\n❌ Backend formatting failed." >&2
+      exit 1
+    }
+    # Add any formatted Rust files back to staging
+    # Find all modified .rs files in backend directory and add them
+    git diff --name-only --diff-filter=ACM | grep '^backend/.*\.rs$' | while read -r file; do
+      git add "$file" 2>/dev/null || true
+    done
+    # Also add any unstaged .rs files that were modified by formatter
+    git diff --name-only | grep '^backend/.*\.rs$' | while read -r file; do
+      git add "$file" 2>/dev/null || true
+    done
+    # Verify formatting again (should pass after formatting)
+    printf "\n➡️  Backend: verifying formatting after auto-format\n"
+    if ! (cd backend && cargo fmt --all -- --check); then
+      echo "\n❌ Backend formatting check failed even after formatting. Please check manually." >&2
+      exit 1
+    fi
+  else
+    echo "✅ Backend code is already formatted"
   fi
-else
-  echo "Backend folder not found, skipping backend format check"
-fi
 
-# Backend: clippy
-printf "\n➡️  Backend: running clippy\n"
-if [ -d backend ]; then
+  # Backend: clippy
+  printf "\n➡️  Backend: running clippy\n"
   if ! (cd backend && cargo clippy --all-targets --all-features -- -D warnings); then
     echo "\n❌ Backend clippy failed. Aborting commit." >&2
     exit 1
   fi
 else
-  echo "Backend folder not found, skipping backend clippy"
+  echo "Backend folder not found, skipping backend checks"
 fi
 
 echo "\n✅ All pre-commit checks passed"
