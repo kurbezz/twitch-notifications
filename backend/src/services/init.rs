@@ -8,6 +8,7 @@
 use std::{path::Path, sync::Arc};
 
 use anyhow::Result;
+use chrono::{Duration, Utc};
 
 use crate::config::Config;
 
@@ -126,6 +127,8 @@ pub async fn initialize_optional_integrations(state: &Arc<crate::AppState>) {
 /// Spawn background workers:
 /// - periodic EventSub synchronization for all users
 /// - periodic calendar synchronization for integrations
+/// - periodic user token refresh (refreshes tokens that expire within 1 hour)
+/// - notification retry queue processor
 ///
 /// These are spawned as `tokio::spawn` tasks. The function returns a vector of
 /// `JoinHandle<()>`s so callers can await task shutdown. Each worker listens
@@ -210,6 +213,116 @@ pub fn spawn_background_workers(
                         break;
                     }
                     _ = tokio::time::sleep(std::time::Duration::from_secs(60 * 60)) => {}
+                }
+            }
+        }));
+    }
+
+    // User token refresh worker
+    {
+        let mut shutdown_rx = shutdown.subscribe();
+        let state = state.clone();
+        handles.push(tokio::spawn(async move {
+            const REFRESH_MARGIN_SECS: i64 = 3600; // Refresh tokens that expire within 1 hour
+            const CHECK_INTERVAL_SECS: u64 = 1800; // Check every 30 minutes
+
+            loop {
+                tracing::info!("Starting periodic user token refresh check");
+
+                match crate::db::UserRepository::list_all(&state.db).await {
+                    Ok(users) => {
+                        let now = Utc::now();
+                        let mut refreshed_count = 0;
+                        let mut failed_count = 0;
+
+                        for user in users {
+                            // Check for shutdown between users so we can exit faster.
+                            if shutdown_rx.try_recv().is_ok() {
+                                tracing::info!("User token refresh worker received shutdown signal");
+                                return;
+                            }
+
+                            // Check if token expires soon
+                            let token_expires_at =
+                                chrono::DateTime::<Utc>::from_naive_utc_and_offset(
+                                    user.twitch_token_expires_at,
+                                    Utc,
+                                );
+                            let refresh_at = token_expires_at - Duration::seconds(REFRESH_MARGIN_SECS);
+
+                            if refresh_at <= now {
+                                tracing::debug!(
+                                    "User {} token expires soon (at {}), refreshing proactively",
+                                    user.id,
+                                    token_expires_at
+                                );
+
+                                match state.twitch.refresh_token(&user.twitch_refresh_token).await {
+                                    Ok(token_response) => {
+                                        let new_expires_at =
+                                            crate::services::twitch::TwitchService::calculate_token_expiry(
+                                                token_response.expires_in,
+                                            );
+
+                                        if let Err(e) = crate::db::UserRepository::update_tokens(
+                                            &state.db,
+                                            &user.id,
+                                            &token_response.access_token,
+                                            &token_response.refresh_token,
+                                            new_expires_at.naive_utc(),
+                                        )
+                                        .await
+                                        {
+                                            tracing::warn!(
+                                                "Failed to update tokens for user {}: {:?}",
+                                                user.id,
+                                                e
+                                            );
+                                            failed_count += 1;
+                                        } else {
+                                            tracing::debug!(
+                                                "Successfully refreshed token for user {} (new expiry: {})",
+                                                user.id,
+                                                new_expires_at
+                                            );
+                                            refreshed_count += 1;
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            "Failed to refresh token for user {}: {:?}",
+                                            user.id,
+                                            e
+                                        );
+                                        failed_count += 1;
+                                    }
+                                }
+                            }
+                        }
+
+                        if refreshed_count > 0 || failed_count > 0 {
+                            tracing::info!(
+                                "User token refresh cycle completed: {} refreshed, {} failed",
+                                refreshed_count,
+                                failed_count
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to list users for token refresh: {:?}",
+                            e
+                        );
+                    }
+                }
+
+                // Sleep for CHECK_INTERVAL_SECS between checks or exit early on shutdown.
+                tokio::select! {
+                    _ = shutdown_rx.recv() => {
+                        tracing::info!("User token refresh worker shutting down");
+                        break;
+                    }
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(CHECK_INTERVAL_SECS)) => {}
                 }
             }
         }));
