@@ -129,13 +129,25 @@ impl CalendarSyncManager {
             }
         };
 
+        // Check if event is in the past - Discord doesn't allow scheduling events in the past
+        let now = Utc::now().naive_utc();
+        if start_time < now {
+            warn!(
+                "Segment {} starts in the past ({}), skipping Discord event creation",
+                segment.id, start_time
+            );
+            return;
+        }
+
         // Prepare Discord ScheduledEvent payload
-        // For EXTERNAL events (entity_type: 3), Discord requires entity_metadata with a location
+        // For EXTERNAL events (entity_type: 3), Discord requires:
+        // - entity_metadata with a location
+        // - channel_id must be None (EXTERNAL events cannot have a channel)
         let location = format!("https://twitch.tv/{}", twitch_login);
         let scheduled_event = ScheduledEvent {
             id: None,
             guild_id: integration.discord_guild_id.clone(),
-            channel_id: Some(integration.discord_channel_id.clone()),
+            channel_id: None, // EXTERNAL events (entity_type: 3) cannot have channel_id
             name: record.title.clone(),
             description: record.category_name.clone(),
             scheduled_start_time: segment.start_time.clone(),
