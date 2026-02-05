@@ -989,29 +989,29 @@ pub fn create_stream_offline_embed(streamer_name: &str, stream_url: &str) -> Dis
         .timestamp(chrono::Utc::now().to_rfc3339())
 }
 
-/// Helper function to create a title change notification embed
-pub fn create_title_change_embed(
+/// Title change embed using the user's rendered template (same text as Telegram).
+pub fn create_title_change_embed_with_message(
     streamer_name: &str,
-    new_title: &str,
     stream_url: &str,
+    message: &str,
 ) -> DiscordEmbed {
     DiscordEmbed::new()
         .title(format!("📝 {} changed the stream title", streamer_name))
-        .description(new_title)
+        .description(message)
         .url(stream_url)
         .color(colors::INFO)
         .timestamp(chrono::Utc::now().to_rfc3339())
 }
 
-/// Helper function to create a category change notification embed
-pub fn create_category_change_embed(
+/// Category change embed using the user's rendered template (same text as Telegram).
+pub fn create_category_change_embed_with_message(
     streamer_name: &str,
-    new_category: &str,
     stream_url: &str,
+    message: &str,
 ) -> DiscordEmbed {
     DiscordEmbed::new()
         .title(format!("🎮 {} changed the category", streamer_name))
-        .description(format!("Now playing: **{}**", new_category))
+        .description(message)
         .url(stream_url)
         .color(colors::INFO)
         .timestamp(chrono::Utc::now().to_rfc3339())
@@ -1047,7 +1047,7 @@ impl crate::services::notifications::Notifier for DiscordService {
         content: crate::services::notifications::NotificationContent<'a>,
         _settings: &crate::db::NotificationSettings,
         stream_url: Option<String>,
-        _message: String,
+        message: String,
     ) -> crate::error::AppResult<()> {
         let (embed, username, avatar) = match content {
             crate::services::notifications::NotificationContent::StreamOnline(data) => {
@@ -1073,16 +1073,19 @@ impl crate::services::notifications::Notifier for DiscordService {
             }
             crate::services::notifications::NotificationContent::TitleChange(data) => {
                 let stream_url_ref = stream_url.as_deref().unwrap_or("");
-                let embed =
-                    create_title_change_embed(&data.streamer_name, &data.new_title, stream_url_ref);
+                let embed = create_title_change_embed_with_message(
+                    &data.streamer_name,
+                    stream_url_ref,
+                    &message,
+                );
                 (embed, Some(data.streamer_name.clone()), None)
             }
             crate::services::notifications::NotificationContent::CategoryChange(data) => {
                 let stream_url_ref = stream_url.as_deref().unwrap_or("");
-                let embed = create_category_change_embed(
+                let embed = create_category_change_embed_with_message(
                     &data.streamer_name,
-                    &data.new_category,
                     stream_url_ref,
+                    &message,
                 );
                 (embed, Some(data.streamer_name.clone()), None)
             }
