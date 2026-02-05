@@ -344,6 +344,13 @@ impl WebhookService {
         state: &Arc<AppState>,
         event: ChannelUpdateEvent,
     ) -> AppResult<()> {
+        tracing::info!(
+            "Processing channel update: broadcaster={}, title={}, category={}",
+            event.broadcaster_user_id,
+            event.title,
+            event.category_name
+        );
+
         // Check what changed
         let (is_live, title_changed, category_changed) = {
             let mut cache = STREAM_STATE_CACHE.write().await;
@@ -375,14 +382,20 @@ impl WebhookService {
         };
 
         if !title_changed && !category_changed {
+            tracing::debug!(
+                "No changes detected for broadcaster {}",
+                event.broadcaster_user_id
+            );
             return Ok(());
         }
 
         // Only send notifications if stream is online
         if !is_live {
-            tracing::debug!(
-                "Skipping title/category change notifications for {}: stream is offline",
-                event.broadcaster_user_id
+            tracing::info!(
+                "Skipping title/category change notifications for {}: stream is offline (title_changed={}, category_changed={})",
+                event.broadcaster_user_id,
+                title_changed,
+                category_changed
             );
             return Ok(());
         }
@@ -428,6 +441,13 @@ impl WebhookService {
         state: &Arc<AppState>,
         event: ChannelPointsRedemptionEvent,
     ) -> AppResult<()> {
+        tracing::info!(
+            "Processing reward redemption: broadcaster={}, redeemer={}, reward={}",
+            event.broadcaster_user_id,
+            event.user_name,
+            event.reward.title
+        );
+
         // Check if stream is online
         let is_live = {
             let cache = STREAM_STATE_CACHE.read().await;
@@ -439,7 +459,7 @@ impl WebhookService {
 
         // Only send notifications if stream is online
         if !is_live {
-            tracing::debug!(
+            tracing::info!(
                 "Skipping reward redemption notification for {}: stream is offline",
                 event.broadcaster_user_id
             );
@@ -450,7 +470,7 @@ impl WebhookService {
             match UserRepository::find_by_twitch_id(&state.db, &event.broadcaster_user_id).await? {
                 Some(u) => u,
                 None => {
-                    tracing::debug!(
+                    tracing::warn!(
                         "No user found for broadcaster: {}",
                         event.broadcaster_user_id
                     );
@@ -466,6 +486,12 @@ impl WebhookService {
             user_input: event.user_input,
             broadcaster_name: event.broadcaster_user_name,
         };
+
+        tracing::info!(
+            "Sending reward redemption notification for user {} (broadcaster={})",
+            user.id,
+            event.broadcaster_user_id
+        );
 
         // Send to integrations
         notification_service
