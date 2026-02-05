@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n            INSERT INTO telegram_integrations (\n                id, user_id, telegram_chat_id, telegram_chat_title, telegram_chat_type,\n                is_enabled, notify_stream_online, notify_stream_offline,\n                notify_title_change, notify_category_change, notify_reward_redemption,\n                created_at, updated_at\n            )\n            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n            RETURNING\n                id as \"id!: String\",\n                user_id as \"user_id!: String\",\n                telegram_chat_id as \"telegram_chat_id!: String\",\n                telegram_chat_title as \"telegram_chat_title?: String\",\n                telegram_chat_type as \"telegram_chat_type?: String\",\n                is_enabled as \"is_enabled!: bool\",\n                notify_stream_online as \"notify_stream_online!: bool\",\n                notify_stream_offline as \"notify_stream_offline!: bool\",\n                notify_title_change as \"notify_title_change!: bool\",\n                notify_category_change as \"notify_category_change!: bool\",\n                notify_reward_redemption as \"notify_reward_redemption!: bool\",\n                created_at as \"created_at!: chrono::NaiveDateTime\",\n                updated_at as \"updated_at!: chrono::NaiveDateTime\"\n            ",
+  "query": "\n            UPDATE telegram_integrations\n            SET is_enabled = ?,\n                notify_stream_online = ?,\n                notify_stream_offline = ?,\n                notify_title_change = ?,\n                notify_category_change = ?,\n                notify_reward_redemption = ?,\n                updated_at = ?\n            WHERE id = ?\n            RETURNING\n                id as \"id!: String\",\n                user_id as \"user_id!: String\",\n                telegram_chat_id as \"telegram_chat_id!: String\",\n                telegram_chat_title as \"telegram_chat_title?: String\",\n                telegram_chat_type as \"telegram_chat_type?: String\",\n                is_enabled as \"is_enabled!: bool\",\n                notify_stream_online as \"notify_stream_online!: bool\",\n                notify_stream_offline as \"notify_stream_offline!: bool\",\n                notify_title_change as \"notify_title_change!: bool\",\n                notify_category_change as \"notify_category_change!: bool\",\n                notify_reward_redemption as \"notify_reward_redemption!: bool\",\n                last_telegram_message_id as \"last_telegram_message_id?: i32\",\n                created_at as \"created_at!: chrono::NaiveDateTime\",\n                updated_at as \"updated_at!: chrono::NaiveDateTime\"\n            ",
   "describe": {
     "columns": [
       {
@@ -59,18 +59,23 @@
         "type_info": "Bool"
       },
       {
-        "name": "created_at!: chrono::NaiveDateTime",
+        "name": "last_telegram_message_id?: i32",
         "ordinal": 11,
+        "type_info": "Int64"
+      },
+      {
+        "name": "created_at!: chrono::NaiveDateTime",
+        "ordinal": 12,
         "type_info": "Datetime"
       },
       {
         "name": "updated_at!: chrono::NaiveDateTime",
-        "ordinal": 12,
+        "ordinal": 13,
         "type_info": "Datetime"
       }
     ],
     "parameters": {
-      "Right": 13
+      "Right": 8
     },
     "nullable": [
       true,
@@ -84,9 +89,10 @@
       false,
       false,
       false,
+      true,
       false,
       false
     ]
   },
-  "hash": "1a20f37ddc358c05cd751498618c06dbd79ca87faa8fae15d0f304a37ef13313"
+  "hash": "4046f8083c258249212ec26528d7dcc7bc7d1c048e5a086510f6fadb0fb8db43"
 }

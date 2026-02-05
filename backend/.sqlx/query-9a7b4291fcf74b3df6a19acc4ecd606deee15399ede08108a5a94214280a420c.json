@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n            SELECT\n                id as \"id!: String\",\n                user_id as \"user_id!: String\",\n                telegram_chat_id as \"telegram_chat_id!: String\",\n                telegram_chat_title as \"telegram_chat_title?: String\",\n                telegram_chat_type as \"telegram_chat_type?: String\",\n                is_enabled as \"is_enabled!: bool\",\n                notify_stream_online as \"notify_stream_online!: bool\",\n                notify_stream_offline as \"notify_stream_offline!: bool\",\n                notify_title_change as \"notify_title_change!: bool\",\n                notify_category_change as \"notify_category_change!: bool\",\n                notify_reward_redemption as \"notify_reward_redemption!: bool\",\n                created_at as \"created_at!: chrono::NaiveDateTime\",\n                updated_at as \"updated_at!: chrono::NaiveDateTime\"\n            FROM telegram_integrations\n            WHERE id = ?\n            ",
+  "query": "\n            SELECT\n                id as \"id!: String\",\n                user_id as \"user_id!: String\",\n                telegram_chat_id as \"telegram_chat_id!: String\",\n                telegram_chat_title as \"telegram_chat_title?: String\",\n                telegram_chat_type as \"telegram_chat_type?: String\",\n                is_enabled as \"is_enabled!: bool\",\n                notify_stream_online as \"notify_stream_online!: bool\",\n                notify_stream_offline as \"notify_stream_offline!: bool\",\n                notify_title_change as \"notify_title_change!: bool\",\n                notify_category_change as \"notify_category_change!: bool\",\n                notify_reward_redemption as \"notify_reward_redemption!: bool\",\n                last_telegram_message_id as \"last_telegram_message_id?: i32\",\n                created_at as \"created_at!: chrono::NaiveDateTime\",\n                updated_at as \"updated_at!: chrono::NaiveDateTime\"\n            FROM telegram_integrations\n            WHERE user_id = ? AND is_enabled = ?\n            ",
   "describe": {
     "columns": [
       {
@@ -59,18 +59,23 @@
         "type_info": "Bool"
       },
       {
-        "name": "created_at!: chrono::NaiveDateTime",
+        "name": "last_telegram_message_id?: i32",
         "ordinal": 11,
+        "type_info": "Int64"
+      },
+      {
+        "name": "created_at!: chrono::NaiveDateTime",
+        "ordinal": 12,
         "type_info": "Datetime"
       },
       {
         "name": "updated_at!: chrono::NaiveDateTime",
-        "ordinal": 12,
+        "ordinal": 13,
         "type_info": "Datetime"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 2
     },
     "nullable": [
       true,
@@ -84,9 +89,10 @@
       false,
       false,
       false,
+      true,
       false,
       false
     ]
   },
-  "hash": "2a3157afdc0b8d90ae32a381a7891bf07355d56a853a5c7e2d9262f7a9d6c40f"
+  "hash": "9a7b4291fcf74b3df6a19acc4ecd606deee15399ede08108a5a94214280a420c"
 }

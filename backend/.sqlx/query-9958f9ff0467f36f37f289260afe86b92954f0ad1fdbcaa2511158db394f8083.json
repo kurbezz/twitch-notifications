@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE telegram_integrations SET last_telegram_message_id = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "9958f9ff0467f36f37f289260afe86b92954f0ad1fdbcaa2511158db394f8083"
+}
