@@ -25,7 +25,8 @@ async fn handle_twitch_webhook(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<(StatusCode, String), AppError> {
-    let (message_id, timestamp, signature, message_type) = WebhookService::extract_headers(&headers)?;
+    let (message_id, timestamp, signature, message_type) =
+        WebhookService::extract_headers(&headers)?;
 
     WebhookService::verify_signature(&state, &message_id, &timestamp, &body, &signature)?;
 

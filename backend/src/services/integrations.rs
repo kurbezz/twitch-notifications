@@ -22,7 +22,9 @@ impl IntegrationService {
             return Ok(true);
         }
 
-        let share = SettingsShareRepository::find_by_owner_and_grantee(&state.db, owner_id, user_id).await?;
+        let share =
+            SettingsShareRepository::find_by_owner_and_grantee(&state.db, owner_id, user_id)
+                .await?;
 
         match share {
             Some(s) if require_manage => Ok(s.can_manage),
@@ -73,7 +75,9 @@ impl IntegrationService {
             AppError::Validation(crate::i18n::t("validation.telegram_bot_not_configured"))
         })?;
 
-        telegram_service.is_user_admin(chat_id, telegram_user_id).await
+        telegram_service
+            .is_user_admin(chat_id, telegram_user_id)
+            .await
     }
 
     /// Check if user has manage permissions in Discord guild
@@ -89,7 +93,9 @@ impl IntegrationService {
             ))
         })?;
 
-        discord.user_has_manage_permissions(guild_id, discord_user_id).await
+        discord
+            .user_has_manage_permissions(guild_id, discord_user_id)
+            .await
     }
 
     /// Select which Discord account to use for permission checks
@@ -99,15 +105,13 @@ impl IntegrationService {
         owner_user: &crate::db::User,
     ) -> Result<String, AppError> {
         if owner_id == auth_user.id {
-            owner_user
-                .discord_user_id
-                .clone()
-                .ok_or_else(|| AppError::BadRequest(crate::i18n::t("bad_request.no_discord_linked")))
+            owner_user.discord_user_id.clone().ok_or_else(|| {
+                AppError::BadRequest(crate::i18n::t("bad_request.no_discord_linked"))
+            })
         } else {
-            auth_user
-                .discord_user_id
-                .clone()
-                .ok_or_else(|| AppError::BadRequest(crate::i18n::t("bad_request.no_discord_linked")))
+            auth_user.discord_user_id.clone().ok_or_else(|| {
+                AppError::BadRequest(crate::i18n::t("bad_request.no_discord_linked"))
+            })
         }
     }
 

@@ -80,7 +80,6 @@ pub struct TelegramLoginRequest {
     pub hash: String,
 }
 
-
 // ============================================================================
 // Handlers
 // ============================================================================
@@ -112,7 +111,10 @@ async fn callback(
     if let Some(error) = query.error {
         let description = query.error_description.unwrap_or_default();
         tracing::error!("OAuth error: {} - {}", error, description);
-        return Err(AppError::BadRequest(format!("OAuth error: {}", description)));
+        return Err(AppError::BadRequest(format!(
+            "OAuth error: {}",
+            description
+        )));
     }
 
     let code = query.code.ok_or_else(|| {
@@ -126,7 +128,8 @@ async fn callback(
     })?;
 
     let oauth_state = AuthService::decode_oauth_state(&state, &state_encoded)?;
-    let (redirect_url, user_id) = AuthService::handle_twitch_callback(&state, code, oauth_state).await?;
+    let (redirect_url, user_id) =
+        AuthService::handle_twitch_callback(&state, code, oauth_state).await?;
 
     tracing::info!("OAuth authentication successful for user: {}", user_id);
     Ok(Redirect::to(&redirect_url))
@@ -363,12 +366,10 @@ async fn discord_link(
     AuthUser(user): AuthUser,
     Query(query): Query<LoginQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let client_id = state
-        .config
-        .discord
-        .client_id
-        .as_ref()
-        .ok_or_else(|| AppError::ServiceUnavailable("Discord OAuth not configured".to_string()))?;
+    let client_id =
+        state.config.discord.client_id.as_ref().ok_or_else(|| {
+            AppError::ServiceUnavailable("Discord OAuth not configured".to_string())
+        })?;
 
     let redirect_to = query.redirect_to.filter(|r| !r.is_empty());
     let state_jwt = AuthService::generate_discord_oauth_state(&state, user.id, redirect_to)?;
@@ -395,7 +396,10 @@ async fn discord_callback(
     if let Some(error) = query.error {
         let description = query.error_description.unwrap_or_default();
         tracing::error!("OAuth error: {} - {}", error, description);
-        return Err(AppError::BadRequest(format!("OAuth error: {}", description)));
+        return Err(AppError::BadRequest(format!(
+            "OAuth error: {}",
+            description
+        )));
     }
 
     let code = query.code.ok_or_else(|| {

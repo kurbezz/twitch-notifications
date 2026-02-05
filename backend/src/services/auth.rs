@@ -70,10 +70,7 @@ impl AuthService {
     }
 
     /// Decode and validate OAuth state JWT
-    pub fn decode_oauth_state(
-        state: &Arc<AppState>,
-        state_encoded: &str,
-    ) -> AppResult<OAuthState> {
+    pub fn decode_oauth_state(state: &Arc<AppState>, state_encoded: &str) -> AppResult<OAuthState> {
         let token_data = decode::<OAuthState>(
             state_encoded,
             &DecodingKey::from_secret(state.config.jwt.secret.as_bytes()),
@@ -224,7 +221,8 @@ impl AuthService {
         let frontend_base = state.config.server.frontend_url.trim_end_matches('/');
         let callback_url = format!("{}/auth/callback", frontend_base);
         let token_enc: String = url::form_urlencoded::byte_serialize(token.as_bytes()).collect();
-        let expires_at = (Utc::now() + Duration::hours(state.config.jwt.expiration_hours)).timestamp();
+        let expires_at =
+            (Utc::now() + Duration::hours(state.config.jwt.expiration_hours)).timestamp();
 
         let raw_redirect = oauth_state.redirect_to.as_deref().unwrap_or("/dashboard");
         let safe_redirect = if Self::is_safe_redirect(raw_redirect, frontend_base) {
@@ -251,25 +249,20 @@ impl AuthService {
         code: String,
         discord_state: DiscordOAuthState,
     ) -> AppResult<String> {
-        let client_id = state
-            .config
-            .discord
-            .client_id
-            .as_ref()
-            .ok_or_else(|| AppError::ServiceUnavailable("Discord OAuth not configured".to_string()))?;
-        let client_secret = state
-            .config
-            .discord
-            .client_secret
-            .as_ref()
-            .ok_or_else(|| AppError::ServiceUnavailable("Discord OAuth not configured".to_string()))?;
+        let client_id = state.config.discord.client_id.as_ref().ok_or_else(|| {
+            AppError::ServiceUnavailable("Discord OAuth not configured".to_string())
+        })?;
+        let client_secret = state.config.discord.client_secret.as_ref().ok_or_else(|| {
+            AppError::ServiceUnavailable("Discord OAuth not configured".to_string())
+        })?;
 
         // Exchange code for token
         let callback_url = format!(
             "{}/api/auth/discord/callback",
             state.config.server.webhook_url.trim_end_matches('/')
         );
-        let token_resp = exchange_code_for_token(client_id, client_secret, &code, &callback_url).await?;
+        let token_resp =
+            exchange_code_for_token(client_id, client_secret, &code, &callback_url).await?;
 
         // Fetch user info
         let discord_user = get_discord_user(&token_resp.access_token).await?;
@@ -310,12 +303,9 @@ impl AuthService {
         user_id: String,
         telegram_payload: std::collections::HashMap<String, String>,
     ) -> AppResult<()> {
-        let bot_token = state
-            .config
-            .telegram
-            .bot_token
-            .as_ref()
-            .ok_or_else(|| AppError::ServiceUnavailable("Telegram bot not configured".to_string()))?;
+        let bot_token = state.config.telegram.bot_token.as_ref().ok_or_else(|| {
+            AppError::ServiceUnavailable("Telegram bot not configured".to_string())
+        })?;
 
         // Verify signature
         let info = verify_telegram_login_payload(&telegram_payload, bot_token)?;
@@ -341,7 +331,11 @@ impl AuthService {
         {
             Ok(url_opt) => url_opt,
             Err(e) => {
-                tracing::warn!("Failed to download Telegram photo for {}: {:?}", &info.id, e);
+                tracing::warn!(
+                    "Failed to download Telegram photo for {}: {:?}",
+                    &info.id,
+                    e
+                );
                 None
             }
         };
@@ -416,21 +410,45 @@ impl AuthService {
                                                     "https://api.telegram.org/bot{}/getFile?file_id={}",
                                                     bot_token, file_id
                                                 );
-                                                if let Ok(file_resp) = client.get(&get_file_url).send().await {
+                                                if let Ok(file_resp) =
+                                                    client.get(&get_file_url).send().await
+                                                {
                                                     if file_resp.status().is_success() {
-                                                        let file_json: serde_json::Value = file_resp.json().await?;
-                                                        if file_json.get("ok").and_then(|v| v.as_bool()) == Some(true) {
-                                                            if let Some(file_path_raw) = file_json["result"]["file_path"].as_str() {
+                                                        let file_json: serde_json::Value =
+                                                            file_resp.json().await?;
+                                                        if file_json
+                                                            .get("ok")
+                                                            .and_then(|v| v.as_bool())
+                                                            == Some(true)
+                                                        {
+                                                            if let Some(file_path_raw) = file_json
+                                                                ["result"]["file_path"]
+                                                                .as_str()
+                                                            {
                                                                 let file_url = format!(
                                                                     "https://api.telegram.org/file/bot{}/{}",
                                                                     bot_token, file_path_raw
                                                                 );
-                                                                if let Ok(final_resp) = client.get(&file_url).send().await {
-                                                                    if final_resp.status().is_success() {
-                                                                        let b = final_resp.bytes().await?;
+                                                                if let Ok(final_resp) = client
+                                                                    .get(&file_url)
+                                                                    .send()
+                                                                    .await
+                                                                {
+                                                                    if final_resp
+                                                                        .status()
+                                                                        .is_success()
+                                                                    {
+                                                                        let b = final_resp
+                                                                            .bytes()
+                                                                            .await?;
                                                                         bytes_opt = Some(b);
-                                                                        if let Some(found_ext) = file_path_raw.split('.').next_back() {
-                                                                            ext = found_ext.to_string();
+                                                                        if let Some(found_ext) =
+                                                                            file_path_raw
+                                                                                .split('.')
+                                                                                .next_back()
+                                                                        {
+                                                                            ext = found_ext
+                                                                                .to_string();
                                                                         }
                                                                     }
                                                                 }
@@ -462,9 +480,9 @@ impl AuthService {
         let filename = format!("{}.{}", telegram_user_id, ext);
         let path = dir.join(&filename);
 
-        tokio::fs::write(&path, &bytes)
-            .await
-            .map_err(|e| AppError::Internal(anyhow::anyhow!("Failed to write photo to disk: {}", e)))?;
+        tokio::fs::write(&path, &bytes).await.map_err(|e| {
+            AppError::Internal(anyhow::anyhow!("Failed to write photo to disk: {}", e))
+        })?;
 
         let base = state.config.server.webhook_url.trim_end_matches('/');
         let public_url = format!("{}/api/auth/telegram/photo/{}", base, telegram_user_id);
@@ -481,7 +499,10 @@ impl AuthService {
             .await?
             .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
-        let token_response = state.twitch.refresh_token(&user.twitch_refresh_token).await?;
+        let token_response = state
+            .twitch
+            .refresh_token(&user.twitch_refresh_token)
+            .await?;
         let token_expires_at = TwitchService::calculate_token_expiry(token_response.expires_in);
 
         UserRepository::update_tokens(
@@ -521,10 +542,12 @@ impl AuthService {
         // Remove integrations
         if let Some(telegram_id) = user.telegram_user_id.clone() {
             let integrations =
-                crate::db::TelegramIntegrationRepository::find_by_chat_id(&state.db, &telegram_id).await?;
+                crate::db::TelegramIntegrationRepository::find_by_chat_id(&state.db, &telegram_id)
+                    .await?;
             for integration in integrations {
                 if integration.user_id == user_id {
-                    crate::db::TelegramIntegrationRepository::delete(&state.db, &integration.id).await?;
+                    crate::db::TelegramIntegrationRepository::delete(&state.db, &integration.id)
+                        .await?;
                 }
             }
         }
@@ -540,7 +563,11 @@ impl AuthService {
                 let p = dir.join(format!("{}.{}", telegram_id, ext));
                 if tokio::fs::metadata(&p).await.is_ok() {
                     if let Err(e) = tokio::fs::remove_file(&p).await {
-                        tracing::warn!("Failed to remove cached Telegram photo {}: {:?}", p.display(), e);
+                        tracing::warn!(
+                            "Failed to remove cached Telegram photo {}: {:?}",
+                            p.display(),
+                            e
+                        );
                     }
                 }
             }
@@ -558,10 +585,12 @@ impl AuthService {
         // Remove integrations
         if let Some(discord_id) = user.discord_user_id.clone() {
             let integrations =
-                crate::db::DiscordIntegrationRepository::find_by_channel_id(&state.db, &discord_id).await?;
+                crate::db::DiscordIntegrationRepository::find_by_channel_id(&state.db, &discord_id)
+                    .await?;
             for integration in integrations {
                 if integration.user_id == user_id {
-                    crate::db::DiscordIntegrationRepository::delete(&state.db, &integration.id).await?;
+                    crate::db::DiscordIntegrationRepository::delete(&state.db, &integration.id)
+                        .await?;
                 }
             }
         }

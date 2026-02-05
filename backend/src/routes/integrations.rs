@@ -9,14 +9,13 @@ use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
 use crate::db::{
-    CreateDiscordIntegration, DiscordIntegration, TelegramIntegration,
-    UpdateDiscordIntegration, UpdateTelegramIntegration, UserRepository,
+    CreateDiscordIntegration, DiscordIntegration, TelegramIntegration, UpdateDiscordIntegration,
+    UpdateTelegramIntegration, UserRepository,
 };
 use crate::error::{AppError, AppErrorWithDetails, AppResult};
 use crate::routes::auth::AuthUser;
 use crate::services::integrations::IntegrationService;
 use crate::AppState;
-
 
 #[cfg(test)]
 mod tests {
@@ -293,7 +292,8 @@ async fn list_telegram_integrations(
     }
 
     let integrations = IntegrationService::list_telegram_integrations(&state, &owner_id).await?;
-    let response: Vec<TelegramIntegrationResponse> = integrations.into_iter().map(Into::into).collect();
+    let response: Vec<TelegramIntegrationResponse> =
+        integrations.into_iter().map(Into::into).collect();
 
     Ok(Json(response))
 }
@@ -320,7 +320,10 @@ async fn create_telegram_integration(
         .await?
         .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
-    let chat_type = request.telegram_chat_type.clone().or(Some("private".to_string()));
+    let chat_type = request
+        .telegram_chat_type
+        .clone()
+        .or(Some("private".to_string()));
     let chat_id = IntegrationService::determine_telegram_chat_id(
         &owner_id,
         &user,
@@ -336,9 +339,12 @@ async fn create_telegram_integration(
         let owner_tg_id = owner.telegram_user_id.clone().ok_or_else(|| {
             AppError::Validation(crate::i18n::t("validation.owner_telegram_not_linked"))
         })?;
-        let is_admin = IntegrationService::check_telegram_admin(&state, &chat_id, &owner_tg_id).await?;
+        let is_admin =
+            IntegrationService::check_telegram_admin(&state, &chat_id, &owner_tg_id).await?;
         if !is_admin {
-            return Err(AppError::Validation(crate::i18n::t("validation.must_be_admin")));
+            return Err(AppError::Validation(crate::i18n::t(
+                "validation.must_be_admin",
+            )));
         }
     }
 
@@ -519,7 +525,8 @@ async fn list_discord_integrations(
     }
 
     let integrations = IntegrationService::list_discord_integrations(&state, &owner_id).await?;
-    let response: Vec<DiscordIntegrationResponse> = integrations.into_iter().map(Into::into).collect();
+    let response: Vec<DiscordIntegrationResponse> =
+        integrations.into_iter().map(Into::into).collect();
 
     Ok(Json(response))
 }
@@ -549,7 +556,8 @@ async fn create_discord_integration(
         .await?
         .ok_or_else(|| AppError::NotFound(crate::i18n::t("not_found.user")))?;
 
-    let discord_account_to_check = IntegrationService::select_discord_account_to_check(&owner_id, &user, &owner_user)?;
+    let discord_account_to_check =
+        IntegrationService::select_discord_account_to_check(&owner_id, &user, &owner_user)?;
 
     let has_manage = IntegrationService::check_discord_manage_permissions(
         &state,
@@ -578,7 +586,8 @@ async fn create_discord_integration(
         discord_webhook_url: request.discord_webhook_url,
     };
 
-    let created = IntegrationService::create_discord_integration(&state, &owner_id, integration).await?;
+    let created =
+        IntegrationService::create_discord_integration(&state, &owner_id, integration).await?;
 
     Ok(Json(created.into()))
 }
@@ -654,7 +663,11 @@ async fn update_discord_integration(
             )
             .await
             {
-                tracing::warn!("Immediate calendar sync for integration {} failed: {:?}", updated_clone.id, e);
+                tracing::warn!(
+                    "Immediate calendar sync for integration {} failed: {:?}",
+                    updated_clone.id,
+                    e
+                );
             }
         });
     }

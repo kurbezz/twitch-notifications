@@ -8,9 +8,7 @@ use axum::{
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
-use crate::db::{
-    SettingsShareRepository, UserRepository,
-};
+use crate::db::{SettingsShareRepository, UserRepository};
 use crate::error::{AppError, AppResult};
 use crate::routes::auth::AuthUser;
 use crate::services::settings::SettingsService;
@@ -210,7 +208,12 @@ async fn update_settings(
     AuthUser(user): AuthUser,
     Json(request): Json<UpdateSettingsRequest>,
 ) -> AppResult<Json<UserSettingsResponse>> {
-    SettingsService::update_notify_reward_redemption(&state, &user.id, request.notify_reward_redemption).await?;
+    SettingsService::update_notify_reward_redemption(
+        &state,
+        &user.id,
+        request.notify_reward_redemption,
+    )
+    .await?;
     get_settings(State(state), AuthUser(user)).await
 }
 
@@ -224,7 +227,11 @@ async fn get_settings_for_user(
         return get_settings(State(state), AuthUser(user)).await;
     }
 
-    if !crate::services::integrations::IntegrationService::check_access(&state, &owner_id, &user.id, false).await? {
+    if !crate::services::integrations::IntegrationService::check_access(
+        &state, &owner_id, &user.id, false,
+    )
+    .await?
+    {
         tracing::warn!(
             "Access denied: user {} attempted to view settings of owner {} without share",
             user.id,
@@ -266,11 +273,20 @@ async fn update_settings_for_user(
         return update_settings(State(state), AuthUser(user), Json(request)).await;
     }
 
-    if !crate::services::integrations::IntegrationService::check_access(&state, &owner_id, &user.id, true).await? {
+    if !crate::services::integrations::IntegrationService::check_access(
+        &state, &owner_id, &user.id, true,
+    )
+    .await?
+    {
         return Err(AppError::Forbidden);
     }
 
-    SettingsService::update_notify_reward_redemption(&state, &owner_id, request.notify_reward_redemption).await?;
+    SettingsService::update_notify_reward_redemption(
+        &state,
+        &owner_id,
+        request.notify_reward_redemption,
+    )
+    .await?;
 
     let settings = SettingsService::get_settings(&state, &owner_id).await?;
     let (notify_stream_online, notify_stream_offline, notify_title_change, notify_category_change) =
@@ -460,7 +476,11 @@ async fn get_messages_for_user(
         return get_messages(State(state), AuthUser(user)).await;
     }
 
-    if !crate::services::integrations::IntegrationService::check_access(&state, &owner_id, &user.id, false).await? {
+    if !crate::services::integrations::IntegrationService::check_access(
+        &state, &owner_id, &user.id, false,
+    )
+    .await?
+    {
         tracing::warn!(
             "Access denied: user {} attempted to view messages of owner {} without share",
             user.id,
@@ -492,7 +512,11 @@ async fn update_messages_for_user(
         return update_messages(State(state), AuthUser(user), Json(request)).await;
     }
 
-    if !crate::services::integrations::IntegrationService::check_access(&state, &owner_id, &user.id, true).await? {
+    if !crate::services::integrations::IntegrationService::check_access(
+        &state, &owner_id, &user.id, true,
+    )
+    .await?
+    {
         return Err(AppError::Forbidden);
     }
 
@@ -527,7 +551,11 @@ async fn reset_to_defaults_for_user(
         return reset_to_defaults(State(state), AuthUser(user)).await;
     }
 
-    if !crate::services::integrations::IntegrationService::check_access(&state, &owner_id, &user.id, true).await? {
+    if !crate::services::integrations::IntegrationService::check_access(
+        &state, &owner_id, &user.id, true,
+    )
+    .await?
+    {
         return Err(AppError::Forbidden);
     }
 

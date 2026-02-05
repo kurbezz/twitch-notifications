@@ -92,7 +92,8 @@ impl SettingsService {
     ) -> AppResult<crate::db::NotificationSettings> {
         // Normalize placeholders
         let stream_online_message = stream_online_message.map(|m| Self::normalize_placeholders(&m));
-        let stream_offline_message = stream_offline_message.map(|m| Self::normalize_placeholders(&m));
+        let stream_offline_message =
+            stream_offline_message.map(|m| Self::normalize_placeholders(&m));
         let stream_title_change_message =
             stream_title_change_message.map(|m| Self::normalize_placeholders(&m));
         let stream_category_change_message =

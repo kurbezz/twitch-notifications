@@ -27,7 +27,8 @@ const TWITCH_MESSAGE_TYPE_HEADER: &str = "twitch-eventsub-message-type";
 const SUB_TYPE_STREAM_ONLINE: &str = "stream.online";
 const SUB_TYPE_STREAM_OFFLINE: &str = "stream.offline";
 const SUB_TYPE_CHANNEL_UPDATE: &str = "channel.update";
-const SUB_TYPE_CHANNEL_POINTS_REDEMPTION: &str = "channel.channel_points_custom_reward_redemption.add";
+const SUB_TYPE_CHANNEL_POINTS_REDEMPTION: &str =
+    "channel.channel_points_custom_reward_redemption.add";
 
 #[derive(Debug, Clone)]
 pub struct StreamState {
@@ -259,20 +260,22 @@ impl WebhookService {
         }
 
         // Find user
-        let user = match UserRepository::find_by_twitch_id(&state.db, &event.broadcaster_user_id).await? {
-            Some(u) => u,
-            None => {
-                tracing::warn!(
-                    "No user found for broadcaster: {} (twitch_id={})",
-                    event.broadcaster_user_name,
-                    event.broadcaster_user_id
-                );
-                return Ok(());
-            }
-        };
+        let user =
+            match UserRepository::find_by_twitch_id(&state.db, &event.broadcaster_user_id).await? {
+                Some(u) => u,
+                None => {
+                    tracing::warn!(
+                        "No user found for broadcaster: {} (twitch_id={})",
+                        event.broadcaster_user_name,
+                        event.broadcaster_user_id
+                    );
+                    return Ok(());
+                }
+            };
 
         // Get stream info (with token refresh logic)
-        let (title, category, thumbnail) = Self::get_stream_info(state, &user, &event.broadcaster_user_id).await;
+        let (title, category, thumbnail) =
+            Self::get_stream_info(state, &user, &event.broadcaster_user_id).await;
 
         // Send notifications
         let notification_service = NotificationService::new(state);
@@ -314,13 +317,17 @@ impl WebhookService {
             cache.remove(&event.broadcaster_user_id);
         }
 
-        let user = match UserRepository::find_by_twitch_id(&state.db, &event.broadcaster_user_id).await? {
-            Some(u) => u,
-            None => {
-                tracing::debug!("No user found for broadcaster: {}", event.broadcaster_user_id);
-                return Ok(());
-            }
-        };
+        let user =
+            match UserRepository::find_by_twitch_id(&state.db, &event.broadcaster_user_id).await? {
+                Some(u) => u,
+                None => {
+                    tracing::debug!(
+                        "No user found for broadcaster: {}",
+                        event.broadcaster_user_id
+                    );
+                    return Ok(());
+                }
+            };
 
         let notification_service = NotificationService::new(state);
         let data = StreamOfflineData {
@@ -353,7 +360,8 @@ impl WebhookService {
                 .unwrap_or((false, String::new(), String::new()));
 
             let title_changed = !prev_title.is_empty() && prev_title != event.title;
-            let category_changed = !prev_category_id.is_empty() && prev_category_id != event.category_id;
+            let category_changed =
+                !prev_category_id.is_empty() && prev_category_id != event.category_id;
 
             cache.insert(
                 event.broadcaster_user_id.clone(),
@@ -371,13 +379,17 @@ impl WebhookService {
             return Ok(());
         }
 
-        let user = match UserRepository::find_by_twitch_id(&state.db, &event.broadcaster_user_id).await? {
-            Some(u) => u,
-            None => {
-                tracing::debug!("No user found for broadcaster: {}", event.broadcaster_user_id);
-                return Ok(());
-            }
-        };
+        let user =
+            match UserRepository::find_by_twitch_id(&state.db, &event.broadcaster_user_id).await? {
+                Some(u) => u,
+                None => {
+                    tracing::debug!(
+                        "No user found for broadcaster: {}",
+                        event.broadcaster_user_id
+                    );
+                    return Ok(());
+                }
+            };
 
         let notification_service = NotificationService::new(state);
 
@@ -408,13 +420,17 @@ impl WebhookService {
         state: &Arc<AppState>,
         event: ChannelPointsRedemptionEvent,
     ) -> AppResult<()> {
-        let user = match UserRepository::find_by_twitch_id(&state.db, &event.broadcaster_user_id).await? {
-            Some(u) => u,
-            None => {
-                tracing::debug!("No user found for broadcaster: {}", event.broadcaster_user_id);
-                return Ok(());
-            }
-        };
+        let user =
+            match UserRepository::find_by_twitch_id(&state.db, &event.broadcaster_user_id).await? {
+                Some(u) => u,
+                None => {
+                    tracing::debug!(
+                        "No user found for broadcaster: {}",
+                        event.broadcaster_user_id
+                    );
+                    return Ok(());
+                }
+            };
 
         let notification_service = NotificationService::new(state);
         let data = RewardRedemptionData {
@@ -433,7 +449,8 @@ impl WebhookService {
         // Send chat message if enabled
         let settings = NotificationSettingsRepository::get_or_create(&state.db, &user.id).await?;
         if settings.notify_reward_redemption {
-            let template = SettingsService::normalize_placeholders(&settings.reward_redemption_message);
+            let template =
+                SettingsService::normalize_placeholders(&settings.reward_redemption_message);
             let message = template
                 .replace("{user}", &data.redeemer_name)
                 .replace("{reward}", &data.reward_name)
@@ -471,7 +488,9 @@ impl WebhookService {
         // Retry with refreshed token if unauthorized
         if let Err(AppError::TwitchApi(ref msg)) = stream_result {
             if msg.contains("401") || msg.contains("Unauthorized") {
-                if let Ok((new_access, _)) = Self::refresh_token_helper(state, &user.id, &refresh_token).await {
+                if let Ok((new_access, _)) =
+                    Self::refresh_token_helper(state, &user.id, &refresh_token).await
+                {
                     access_token = new_access;
                     stream_result = state.twitch.get_stream(&access_token, broadcaster_id).await;
                 }
@@ -513,7 +532,9 @@ impl WebhookService {
         // Retry with refreshed token if unauthorized
         if let Err(AppError::TwitchApi(ref msg)) = result {
             if msg.contains("401") || msg.contains("Unauthorized") {
-                if let Ok((new_access, _)) = Self::refresh_token_helper(state, &user.id, &refresh_token).await {
+                if let Ok((new_access, _)) =
+                    Self::refresh_token_helper(state, &user.id, &refresh_token).await
+                {
                     let _ = state
                         .twitch
                         .send_chat_message(&new_access, &user.twitch_id, &user.twitch_id, message)
