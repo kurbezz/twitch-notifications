@@ -32,12 +32,13 @@ const SUB_TYPE_CHANNEL_POINTS_REDEMPTION: &str =
 #[derive(Debug, Clone)]
 pub struct StreamState {
     pub is_live: bool,
-    pub title: String,
-    pub category_id: String,
+    pub cached_at: chrono::DateTime<Utc>,
 }
 
 lazy_static::lazy_static! {
     static ref STREAM_STATE_CACHE: RwLock<HashMap<String, StreamState>> = RwLock::new(HashMap::new());
+    // Separate cache for tracking title/category changes (not part of stream status)
+    static ref CHANNEL_INFO_CACHE: RwLock<HashMap<String, (String, String)>> = RwLock::new(HashMap::new());
 }
 
 #[derive(Debug, Deserialize)]
@@ -241,6 +242,81 @@ impl WebhookService {
         Ok(())
     }
 
+    /// Check if stream is online, using cache with 1 minute TTL
+    /// If cache is empty or expired, makes API request to check status
+    async fn check_stream_status(
+        state: &Arc<AppState>,
+        broadcaster_id: &str,
+        user: &crate::db::User,
+    ) -> AppResult<bool> {
+        const CACHE_TTL_SECONDS: i64 = 60;
+
+        // Check cache first
+        {
+            let cache = STREAM_STATE_CACHE.read().await;
+            if let Some(stream_state) = cache.get(broadcaster_id) {
+                let age = Utc::now() - stream_state.cached_at;
+                if age.num_seconds() <= CACHE_TTL_SECONDS {
+                    // Cache is valid, return cached status
+                    return Ok(stream_state.is_live);
+                }
+                // Cache expired, fall through to API check
+            }
+            // No cache entry or expired, fall through to API check
+        }
+
+        // Cache is empty or expired, check via API
+        let mut access_token = user.twitch_access_token.clone();
+        let mut refresh_token = user.twitch_refresh_token.clone();
+
+        // Check if token needs refresh
+        let token_expires_at =
+            chrono::DateTime::<Utc>::from_naive_utc_and_offset(user.twitch_token_expires_at, Utc);
+        if token_expires_at - Duration::seconds(60) <= Utc::now() {
+            if let Ok((new_access, new_refresh)) =
+                Self::refresh_token_helper(state, &user.id, &refresh_token).await
+            {
+                access_token = new_access;
+                refresh_token = new_refresh;
+            }
+        }
+
+        // Try to get stream info
+        let mut stream_result = state.twitch.get_stream(&access_token, broadcaster_id).await;
+
+        // Retry with refreshed token if unauthorized
+        if let Err(AppError::TwitchApi(ref msg)) = stream_result {
+            if msg.contains("401") || msg.contains("Unauthorized") {
+                if let Ok((new_access, _)) =
+                    Self::refresh_token_helper(state, &user.id, &refresh_token).await
+                {
+                    access_token = new_access;
+                    stream_result = state.twitch.get_stream(&access_token, broadcaster_id).await;
+                }
+            }
+        }
+
+        // Update cache based on API result
+        let is_live = stream_result.is_ok() && stream_result.as_ref().unwrap().is_some();
+        let mut cache = STREAM_STATE_CACHE.write().await;
+
+        if is_live {
+            // Stream is online, update cache
+            cache.insert(
+                broadcaster_id.to_string(),
+                StreamState {
+                    is_live: true,
+                    cached_at: Utc::now(),
+                },
+            );
+        } else {
+            // Stream is offline, remove from cache
+            cache.remove(broadcaster_id);
+        }
+
+        Ok(is_live)
+    }
+
     async fn handle_stream_online(
         state: &Arc<AppState>,
         event: StreamOnlineEvent,
@@ -252,8 +328,7 @@ impl WebhookService {
                 event.broadcaster_user_id.clone(),
                 StreamState {
                     is_live: true,
-                    title: String::new(),
-                    category_id: String::new(),
+                    cached_at: Utc::now(),
                 },
             );
         }
@@ -351,34 +426,25 @@ impl WebhookService {
             event.category_name
         );
 
-        // Check what changed
-        let (is_live, title_changed, category_changed) = {
-            let mut cache = STREAM_STATE_CACHE.write().await;
-            let (prev_is_live, prev_title, prev_category_id) = cache
+        // Check what changed using separate channel info cache
+        let (title_changed, category_changed) = {
+            let mut cache = CHANNEL_INFO_CACHE.write().await;
+            let (prev_title, prev_category_id) = cache
                 .get(&event.broadcaster_user_id)
-                .map(|state| {
-                    (
-                        state.is_live,
-                        state.title.clone(),
-                        state.category_id.clone(),
-                    )
-                })
-                .unwrap_or((false, String::new(), String::new()));
+                .cloned()
+                .unwrap_or((String::new(), String::new()));
 
             let title_changed = !prev_title.is_empty() && prev_title != event.title;
             let category_changed =
                 !prev_category_id.is_empty() && prev_category_id != event.category_id;
 
+            // Update channel info cache
             cache.insert(
                 event.broadcaster_user_id.clone(),
-                StreamState {
-                    is_live: prev_is_live,
-                    title: event.title.clone(),
-                    category_id: event.category_id.clone(),
-                },
+                (event.title.clone(), event.category_id.clone()),
             );
 
-            (prev_is_live, title_changed, category_changed)
+            (title_changed, category_changed)
         };
 
         if !title_changed && !category_changed {
@@ -389,17 +455,7 @@ impl WebhookService {
             return Ok(());
         }
 
-        // Only send notifications if stream is online
-        if !is_live {
-            tracing::info!(
-                "Skipping title/category change notifications for {}: stream is offline (title_changed={}, category_changed={})",
-                event.broadcaster_user_id,
-                title_changed,
-                category_changed
-            );
-            return Ok(());
-        }
-
+        // Find user first to check stream status
         let user =
             match UserRepository::find_by_twitch_id(&state.db, &event.broadcaster_user_id).await? {
                 Some(u) => u,
@@ -411,6 +467,31 @@ impl WebhookService {
                     return Ok(());
                 }
             };
+
+        // Check if stream is online using check_stream_status
+        let is_live =
+            match Self::check_stream_status(state, &event.broadcaster_user_id, &user).await {
+                Ok(live) => live,
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to check stream status for {}: {}",
+                        event.broadcaster_user_id,
+                        e
+                    );
+                    // If check fails, assume offline to be safe
+                    false
+                }
+            };
+
+        if !is_live {
+            tracing::info!(
+                "Skipping title/category change notifications for {}: stream is offline (title_changed={}, category_changed={})",
+                event.broadcaster_user_id,
+                title_changed,
+                category_changed
+            );
+            return Ok(());
+        }
 
         let notification_service = NotificationService::new(state);
 
@@ -448,24 +529,7 @@ impl WebhookService {
             event.reward.title
         );
 
-        // Check if stream is online
-        let is_live = {
-            let cache = STREAM_STATE_CACHE.read().await;
-            cache
-                .get(&event.broadcaster_user_id)
-                .map(|state| state.is_live)
-                .unwrap_or(false)
-        };
-
-        // Only send notifications if stream is online
-        if !is_live {
-            tracing::info!(
-                "Skipping reward redemption notification for {}: stream is offline",
-                event.broadcaster_user_id
-            );
-            return Ok(());
-        }
-
+        // Find user first to check stream status
         let user =
             match UserRepository::find_by_twitch_id(&state.db, &event.broadcaster_user_id).await? {
                 Some(u) => u,
@@ -477,6 +541,29 @@ impl WebhookService {
                     return Ok(());
                 }
             };
+
+        // Check if stream is online using check_stream_status
+        let is_live =
+            match Self::check_stream_status(state, &event.broadcaster_user_id, &user).await {
+                Ok(live) => live,
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to check stream status for {}: {}",
+                        event.broadcaster_user_id,
+                        e
+                    );
+                    // If check fails, assume offline to be safe
+                    false
+                }
+            };
+
+        if !is_live {
+            tracing::info!(
+                "Skipping reward redemption notification for {}: stream is offline",
+                event.broadcaster_user_id
+            );
+            return Ok(());
+        }
 
         let notification_service = NotificationService::new(state);
         let data = RewardRedemptionData {
