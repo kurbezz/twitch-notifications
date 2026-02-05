@@ -450,9 +450,10 @@ impl WebhookService {
                 .cloned()
                 .unwrap_or((String::new(), String::new()));
 
+            // When cache is empty (e.g. after restart), send only title change to avoid duplicate.
             let cache_empty = prev_title.is_empty() && prev_category_name.is_empty();
             let title_changed = cache_empty || prev_title != event.title;
-            let category_changed = cache_empty || prev_category_name != event.category_name;
+            let category_changed = !cache_empty && prev_category_name != event.category_name;
 
             // Update channel info cache
             cache.insert(
@@ -511,6 +512,7 @@ impl WebhookService {
 
         let notification_service = NotificationService::new(state);
 
+        // At most one notification per channel.update (title takes precedence; it includes category in the message).
         if title_changed {
             let data = TitleChangeData {
                 streamer_name: event.broadcaster_user_name.clone(),
@@ -520,9 +522,7 @@ impl WebhookService {
             notification_service
                 .send_notification(&user.id, NotificationContent::TitleChange(&data))
                 .await?;
-        }
-
-        if category_changed {
+        } else if category_changed {
             let data = CategoryChangeData {
                 streamer_name: event.broadcaster_user_name,
                 new_category: event.category_name,
