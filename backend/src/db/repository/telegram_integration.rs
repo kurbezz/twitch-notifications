@@ -20,6 +20,7 @@ struct RowTelegramIntegration {
     notify_title_change: bool,
     notify_category_change: bool,
     notify_reward_redemption: bool,
+    last_telegram_message_id: Option<i32>,
     created_at: chrono::NaiveDateTime,
     updated_at: chrono::NaiveDateTime,
 }
@@ -41,6 +42,7 @@ impl From<RowTelegramIntegration> for TelegramIntegration {
             notify_title_change: row.notify_title_change,
             notify_category_change: row.notify_category_change,
             notify_reward_redemption: row.notify_reward_redemption,
+            last_telegram_message_id: row.last_telegram_message_id,
             created_at: row.created_at,
             updated_at: row.updated_at,
         }
@@ -98,6 +100,7 @@ impl TelegramIntegrationRepository {
                 notify_title_change as "notify_title_change!: bool",
                 notify_category_change as "notify_category_change!: bool",
                 notify_reward_redemption as "notify_reward_redemption!: bool",
+                last_telegram_message_id as "last_telegram_message_id?: i32",
                 created_at as "created_at!: chrono::NaiveDateTime",
                 updated_at as "updated_at!: chrono::NaiveDateTime"
             "#,
@@ -138,6 +141,7 @@ impl TelegramIntegrationRepository {
                 notify_title_change as "notify_title_change!: bool",
                 notify_category_change as "notify_category_change!: bool",
                 notify_reward_redemption as "notify_reward_redemption!: bool",
+                last_telegram_message_id as "last_telegram_message_id?: i32",
                 created_at as "created_at!: chrono::NaiveDateTime",
                 updated_at as "updated_at!: chrono::NaiveDateTime"
             FROM telegram_integrations
@@ -171,6 +175,7 @@ impl TelegramIntegrationRepository {
                 notify_title_change as "notify_title_change!: bool",
                 notify_category_change as "notify_category_change!: bool",
                 notify_reward_redemption as "notify_reward_redemption!: bool",
+                last_telegram_message_id as "last_telegram_message_id?: i32",
                 created_at as "created_at!: chrono::NaiveDateTime",
                 updated_at as "updated_at!: chrono::NaiveDateTime"
             FROM telegram_integrations
@@ -205,6 +210,7 @@ impl TelegramIntegrationRepository {
                 notify_title_change as "notify_title_change!: bool",
                 notify_category_change as "notify_category_change!: bool",
                 notify_reward_redemption as "notify_reward_redemption!: bool",
+                last_telegram_message_id as "last_telegram_message_id?: i32",
                 created_at as "created_at!: chrono::NaiveDateTime",
                 updated_at as "updated_at!: chrono::NaiveDateTime"
             FROM telegram_integrations
@@ -290,6 +296,7 @@ impl TelegramIntegrationRepository {
                 notify_title_change as "notify_title_change!: bool",
                 notify_category_change as "notify_category_change!: bool",
                 notify_reward_redemption as "notify_reward_redemption!: bool",
+                last_telegram_message_id as "last_telegram_message_id?: i32",
                 created_at as "created_at!: chrono::NaiveDateTime",
                 updated_at as "updated_at!: chrono::NaiveDateTime"
             "#,
@@ -307,6 +314,23 @@ impl TelegramIntegrationRepository {
         .map_err(AppError::Database)?;
 
         Ok(row.into())
+    }
+
+    /// Update the last sent Telegram message id for this integration (used to delete previous message when sending a new one).
+    pub async fn set_last_telegram_message_id(
+        pool: &SqlitePool,
+        id: &str,
+        message_id: i32,
+    ) -> AppResult<()> {
+        sqlx::query!(
+            "UPDATE telegram_integrations SET last_telegram_message_id = ? WHERE id = ?",
+            message_id,
+            id
+        )
+        .execute(pool)
+        .await
+        .map_err(AppError::Database)?;
+        Ok(())
     }
 
     pub async fn delete(pool: &SqlitePool, id: &str) -> AppResult<()> {
@@ -337,6 +361,7 @@ impl TelegramIntegrationRepository {
                 notify_title_change as "notify_title_change!: bool",
                 notify_category_change as "notify_category_change!: bool",
                 notify_reward_redemption as "notify_reward_redemption!: bool",
+                last_telegram_message_id as "last_telegram_message_id?: i32",
                 created_at as "created_at!: chrono::NaiveDateTime",
                 updated_at as "updated_at!: chrono::NaiveDateTime"
             FROM telegram_integrations

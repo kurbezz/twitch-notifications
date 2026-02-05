@@ -945,21 +945,20 @@ pub mod colors {
     pub const INFO: u32 = 0x5865F2;
 }
 
-/// Helper function to create a stream online notification embed
+/// Helper function to create a stream online notification embed.
+/// Uses the same rendered message as Telegram (user's template with {streamer}, {title}, {game}, {url}).
 pub fn create_stream_online_embed(
     streamer_name: &str,
     streamer_avatar: Option<&str>,
-    title: &str,
-    game: &str,
+    message: &str,
     thumbnail_url: Option<&str>,
     stream_url: &str,
 ) -> DiscordEmbed {
     let mut embed = DiscordEmbed::new()
         .title(format!("🔴 {} is now live!", streamer_name))
-        .description(title)
+        .description(message)
         .url(stream_url)
         .color(colors::TWITCH_PURPLE)
-        .field("Game", game, true)
         .timestamp(chrono::Utc::now().to_rfc3339());
 
     if let Some(avatar) = streamer_avatar {
@@ -980,10 +979,16 @@ pub fn create_stream_online_embed(
     embed
 }
 
-/// Helper function to create a stream offline notification embed
-pub fn create_stream_offline_embed(streamer_name: &str, stream_url: &str) -> DiscordEmbed {
+/// Helper function to create a stream offline notification embed.
+/// Uses the same rendered message as Telegram (user's template with {streamer}).
+pub fn create_stream_offline_embed(
+    streamer_name: &str,
+    stream_url: &str,
+    message: &str,
+) -> DiscordEmbed {
     DiscordEmbed::new()
         .title(format!("⚫ {} ended the stream", streamer_name))
+        .description(message)
         .url(stream_url)
         .color(colors::INFO)
         .timestamp(chrono::Utc::now().to_rfc3339())
@@ -1017,16 +1022,18 @@ pub fn create_category_change_embed_with_message(
         .timestamp(chrono::Utc::now().to_rfc3339())
 }
 
-/// Helper function to create a reward redemption notification embed
+/// Helper function to create a reward redemption notification embed.
+/// Uses the same rendered message as Telegram (user's template with {user}, {reward}, {cost}).
 pub fn create_reward_redemption_embed(
     redeemer_name: &str,
-    reward_name: &str,
-    reward_cost: i32,
+    _reward_name: &str,
+    _reward_cost: i32,
     user_input: Option<&str>,
+    message: &str,
 ) -> DiscordEmbed {
     let mut embed = DiscordEmbed::new()
         .title(format!("🎁 {} redeemed a reward!", redeemer_name))
-        .description(format!("**{}** for {} points", reward_name, reward_cost))
+        .description(message)
         .color(colors::SUCCESS)
         .timestamp(chrono::Utc::now().to_rfc3339());
 
@@ -1048,15 +1055,14 @@ impl crate::services::notifications::Notifier for DiscordService {
         _settings: &crate::db::NotificationSettings,
         stream_url: Option<String>,
         message: String,
-    ) -> crate::error::AppResult<()> {
+    ) -> crate::error::AppResult<Option<i32>> {
         let (embed, username, avatar) = match content {
             crate::services::notifications::NotificationContent::StreamOnline(data) => {
                 let stream_url_ref = stream_url.as_deref().unwrap_or("");
                 let embed = create_stream_online_embed(
                     &data.streamer_name,
                     data.streamer_avatar.as_deref(),
-                    &data.title,
-                    &data.category,
+                    &message,
                     data.thumbnail_url.as_deref(),
                     stream_url_ref,
                 );
@@ -1068,7 +1074,8 @@ impl crate::services::notifications::Notifier for DiscordService {
             }
             crate::services::notifications::NotificationContent::StreamOffline(data) => {
                 let stream_url_ref = stream_url.as_deref().unwrap_or("");
-                let embed = create_stream_offline_embed(&data.streamer_name, stream_url_ref);
+                let embed =
+                    create_stream_offline_embed(&data.streamer_name, stream_url_ref, &message);
                 (embed, Some(data.streamer_name.clone()), None)
             }
             crate::services::notifications::NotificationContent::TitleChange(data) => {
@@ -1095,6 +1102,7 @@ impl crate::services::notifications::Notifier for DiscordService {
                     &data.reward_name,
                     data.reward_cost,
                     data.user_input.as_deref(),
+                    &message,
                 );
                 (embed, Some(data.broadcaster_name.clone()), None)
             }
@@ -1107,14 +1115,18 @@ impl crate::services::notifications::Notifier for DiscordService {
                 avatar_url: avatar,
                 embeds: Some(vec![embed]),
             };
-            self.send_webhook_message(webhook_url, msg).await
+            self.send_webhook_message(webhook_url, msg)
+                .await
+                .map(|_| None)
         } else {
             let msg = DiscordMessage {
                 content: None,
                 embeds: Some(vec![embed]),
                 tts: None,
             };
-            self.send_message(&ctx.destination_id, msg).await
+            self.send_message(&ctx.destination_id, msg)
+                .await
+                .map(|_| None)
         }
     }
 }

@@ -1,6 +1,6 @@
 use serde::Serialize;
 use teloxide::prelude::*;
-use teloxide::types::{ChatId, ParseMode};
+use teloxide::types::{ChatId, MessageId, ParseMode};
 
 use crate::db::NotificationSettings;
 use crate::error::{AppError, AppResult};
@@ -89,6 +89,40 @@ impl TelegramService {
 
     pub fn get_bot(&self) -> &Bot {
         &self.bot
+    }
+
+    /// Delete a message in a chat. Used to remove the previous notification before sending a new one.
+    /// Logs and ignores errors (e.g. message already deleted by user).
+    pub async fn delete_message(&self, chat_id: &str, message_id: i32) -> AppResult<()> {
+        let chat_id: i64 = chat_id
+            .parse()
+            .map_err(|_| AppError::Telegram("Invalid chat_id".to_string()))?;
+        match self
+            .bot
+            .delete_message(ChatId(chat_id), MessageId(message_id))
+            .await
+        {
+            Ok(_) => {
+                tracing::debug!(
+                    "Deleted Telegram message chat_id={} message_id={}",
+                    chat_id,
+                    message_id
+                );
+                Ok(())
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Could not delete Telegram message (chat_id={}, message_id={}): {}",
+                    chat_id,
+                    message_id,
+                    e
+                );
+                Err(AppError::Telegram(format!(
+                    "Failed to delete message: {}",
+                    e
+                )))
+            }
+        }
     }
 
     /// Check whether a given user id is an administrator in the given chat.
@@ -232,15 +266,16 @@ impl Notifier for TelegramService {
         _settings: &NotificationSettings,
         _stream_url: Option<String>,
         message: String,
-    ) -> AppResult<()> {
+    ) -> AppResult<Option<i32>> {
         // The message is rendered by NotificationService and passed in here —
-        // send it verbatim to Telegram.
-        self.send_message(TelegramMessage {
-            chat_id: ctx.destination_id.clone(),
-            text: message,
-            ..Default::default()
-        })
-        .await
-        .map(|_| ())
+        // send it verbatim to Telegram. Return message_id so the caller can store it for later deletion.
+        let message_id = self
+            .send_message(TelegramMessage {
+                chat_id: ctx.destination_id.clone(),
+                text: message,
+                ..Default::default()
+            })
+            .await?;
+        Ok(Some(message_id))
     }
 }

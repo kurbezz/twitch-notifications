@@ -20,6 +20,9 @@ pub struct TelegramIntegration {
     pub notify_category_change: bool,
     pub notify_reward_redemption: bool,
 
+    /// Last Telegram message id sent to this chat; used to delete the previous message when sending a new one.
+    pub last_telegram_message_id: Option<i32>,
+
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 }

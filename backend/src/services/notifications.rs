@@ -471,6 +471,7 @@ fn is_retryable_error(err: Option<&str>, destination_type: &str) -> bool {
 
 #[async_trait]
 pub trait Notifier: Send + Sync + 'static {
+    /// Send the notification. Returns Ok(Some(message_id)) for Telegram (to store for later deletion), Ok(None) for others.
     async fn send_notification<'a>(
         &self,
         ctx: &IntegrationContext,
@@ -478,7 +479,7 @@ pub trait Notifier: Send + Sync + 'static {
         settings: &NotificationSettings,
         stream_url: Option<String>,
         message: String,
-    ) -> AppResult<()>;
+    ) -> AppResult<Option<i32>>;
 }
 
 /// Result of a notification send attempt
@@ -842,6 +843,19 @@ impl NotificationService {
             }
         };
 
+        // Delete the previous notification message so only the latest one is shown
+        if let Some(prev_msg_id) = integration.last_telegram_message_id {
+            if let Err(e) = telegram.delete_message(&chat_id, prev_msg_id).await {
+                tracing::debug!(
+                    "Could not delete previous Telegram message (chat_id={}, message_id={}): {}",
+                    chat_id,
+                    prev_msg_id,
+                    e
+                );
+                // Continue anyway; the message might have been deleted by the user
+            }
+        }
+
         let ctx = IntegrationContext {
             destination_id: chat_id.clone(),
             webhook_url: None,
@@ -860,12 +874,29 @@ impl NotificationService {
             .await;
 
         match send_result {
-            Ok(_) => NotificationResult {
-                destination_type: "telegram".to_string(),
-                destination_id: chat_id,
-                success: true,
-                error: None,
-            },
+            Ok(opt_message_id) => {
+                if let Some(message_id) = opt_message_id {
+                    if let Err(e) = TelegramIntegrationRepository::set_last_telegram_message_id(
+                        &self.pool,
+                        &integration.id,
+                        message_id,
+                    )
+                    .await
+                    {
+                        tracing::warn!(
+                            "Failed to save last_telegram_message_id for integration {}: {}",
+                            integration.id,
+                            e
+                        );
+                    }
+                }
+                NotificationResult {
+                    destination_type: "telegram".to_string(),
+                    destination_id: chat_id,
+                    success: true,
+                    error: None,
+                }
+            }
             Err(e) => NotificationResult {
                 destination_type: "telegram".to_string(),
                 destination_id: chat_id,
@@ -1203,7 +1234,10 @@ impl NotificationService {
         )?;
 
         // Attempt sending via the appropriate service.
-        let send_result: Result<(), crate::error::AppError> = match task.destination_type.as_str() {
+        let send_result: Result<Option<i32>, crate::error::AppError> = match task
+            .destination_type
+            .as_str()
+        {
             "telegram" => {
                 let telegram_opt = self.telegram.read().await.clone();
                 let telegram = match telegram_opt {
