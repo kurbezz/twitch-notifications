@@ -105,80 +105,196 @@ pub struct IntegrationContext {
     pub webhook_url: Option<String>,
 }
 
-/// Normalize placeholders in a message template.
-/// Converts occurrences like `{{streamer}}` into `{streamer}`.
-fn normalize_placeholders(msg: &str) -> String {
-    let mut result = String::with_capacity(msg.len());
-    let mut start = 0usize;
-
-    while let Some(open_rel) = msg[start..].find("{{") {
-        let open = start + open_rel;
-        if let Some(close_rel) = msg[open + 2..].find("}}") {
-            let close = open + 2 + close_rel;
-            // append text before the opening braces
-            result.push_str(&msg[start..open]);
-            // take inner content and wrap it with a single pair of braces
-            let inner = &msg[open + 2..close];
-            result.push('{');
-            result.push_str(inner);
-            result.push('}');
-            start = close + 2;
-        } else {
-            // no closing braces found; append rest and return
-            result.push_str(&msg[start..]);
-            return result;
-        }
-    }
-
-    // append remaining text
-    result.push_str(&msg[start..]);
-    result
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn normalize_placeholders_basic() {
-        assert_eq!(
-            normalize_placeholders("Hello {{streamer}}!"),
-            "Hello {streamer}!"
-        );
-        assert_eq!(
-            normalize_placeholders("{{title}} — {{game}}"),
-            "{title} — {game}"
-        );
-        assert_eq!(
-            normalize_placeholders("No placeholders here"),
-            "No placeholders here"
-        );
-    }
+    fn test_stream_online_placeholder_replacement() {
+        let template = "{streamer} играет в {game} ({title})!\nПрисоединяйся: {url}";
+        let stream_url = Some("https://twitch.tv/hafmc".to_string());
 
-    #[test]
-    fn normalize_placeholders_edgecases() {
-        // Triple braces collapse by one level: "Weird {{{streamer}}}" -> "Weird {{streamer}}"
-        assert_eq!(
-            normalize_placeholders("Weird {{{streamer}}}"),
-            "Weird {{streamer}}"
-        );
-        // Unmatched braces are preserved
-        assert_eq!(
-            normalize_placeholders("Broken {{streamer"),
-            "Broken {{streamer"
-        );
-    }
+        let data = StreamOnlineData {
+            streamer_name: "HafMC".to_string(),
+            streamer_avatar: None,
+            title: "Френдслоп и Резик".to_string(),
+            category: "Just Chatting".to_string(),
+            thumbnail_url: None,
+        };
 
-    #[test]
-    fn render_message_with_double_brace_template() {
-        let template = normalize_placeholders("🔴 {{streamer}} is live — {{title}}");
         let rendered = template
-            .replace("{streamer}", "xQc")
-            .replace("{title}", "Just Chatting")
-            .replace("{category}", "Just Chatting")
-            .replace("{game}", "Just Chatting")
-            .replace("{url}", "");
-        assert_eq!(rendered, "🔴 xQc is live — Just Chatting");
+            .replace("{streamer}", &data.streamer_name)
+            .replace("{title}", &data.title)
+            .replace("{category}", &data.category)
+            .replace("{game}", &data.category)
+            .replace("{url}", stream_url.as_deref().unwrap_or(""));
+
+        assert_eq!(
+            rendered,
+            "HafMC играет в Just Chatting (Френдслоп и Резик)!\nПрисоединяйся: https://twitch.tv/hafmc"
+        );
+        assert!(!rendered.contains("{streamer}"));
+        assert!(!rendered.contains("{game}"));
+        assert!(!rendered.contains("{title}"));
+        assert!(!rendered.contains("{url}"));
+    }
+
+    #[test]
+    fn test_stream_online_placeholder_replacement_empty_category() {
+        let template = "{streamer} играет в {game}!";
+        let data = StreamOnlineData {
+            streamer_name: "HafMC".to_string(),
+            streamer_avatar: None,
+            title: "Test".to_string(),
+            category: String::new(),
+            thumbnail_url: None,
+        };
+
+        let rendered = template
+            .replace("{streamer}", &data.streamer_name)
+            .replace("{game}", &data.category);
+
+        assert_eq!(rendered, "HafMC играет в !");
+        assert!(!rendered.contains("{streamer}"));
+        assert!(!rendered.contains("{game}"));
+    }
+
+    #[test]
+    fn test_stream_offline_placeholder_replacement() {
+        let template = "⚫ {streamer} завершил стрим";
+        let data = StreamOfflineData {
+            streamer_name: "HafMC".to_string(),
+        };
+
+        let rendered = template.replace("{streamer}", &data.streamer_name);
+
+        assert_eq!(rendered, "⚫ HafMC завершил стрим");
+        assert!(!rendered.contains("{streamer}"));
+    }
+
+    #[test]
+    fn test_title_change_placeholder_replacement() {
+        let template = "📝 {streamer} изменил название стрима:\n\n{title}";
+        let data = TitleChangeData {
+            streamer_name: "HafMC".to_string(),
+            new_title: "Новое название стрима".to_string(),
+        };
+
+        let rendered = template
+            .replace("{streamer}", &data.streamer_name)
+            .replace("{title}", &data.new_title);
+
+        assert_eq!(
+            rendered,
+            "📝 HafMC изменил название стрима:\n\nНовое название стрима"
+        );
+        assert!(!rendered.contains("{streamer}"));
+        assert!(!rendered.contains("{title}"));
+    }
+
+    #[test]
+    fn test_category_change_placeholder_replacement() {
+        let template = "🎮 {streamer} сменил категорию на: {game}";
+        let data = CategoryChangeData {
+            streamer_name: "HafMC".to_string(),
+            new_category: "Just Chatting".to_string(),
+        };
+
+        let rendered = template
+            .replace("{streamer}", &data.streamer_name)
+            .replace("{category}", &data.new_category)
+            .replace("{game}", &data.new_category);
+
+        assert_eq!(rendered, "🎮 HafMC сменил категорию на: Just Chatting");
+        assert!(!rendered.contains("{streamer}"));
+        assert!(!rendered.contains("{game}"));
+    }
+
+    #[test]
+    fn test_category_change_placeholder_replacement_both_placeholders() {
+        let template = "{streamer} сменил {category} на {game}";
+        let data = CategoryChangeData {
+            streamer_name: "HafMC".to_string(),
+            new_category: "Just Chatting".to_string(),
+        };
+
+        let rendered = template
+            .replace("{streamer}", &data.streamer_name)
+            .replace("{category}", &data.new_category)
+            .replace("{game}", &data.new_category);
+
+        assert_eq!(rendered, "HafMC сменил Just Chatting на Just Chatting");
+        assert!(!rendered.contains("{streamer}"));
+        assert!(!rendered.contains("{category}"));
+        assert!(!rendered.contains("{game}"));
+    }
+
+    #[test]
+    fn test_reward_redemption_placeholder_replacement() {
+        let template = "{user} использовал награду {reward} за {cost} очков";
+        let data = RewardRedemptionData {
+            redeemer_name: "viewer123".to_string(),
+            reward_name: "Custom Reward Name".to_string(),
+            reward_cost: 100,
+            user_input: None,
+            broadcaster_name: "HafMC".to_string(),
+        };
+
+        let rendered = template
+            .replace("{user}", &data.redeemer_name)
+            .replace("{reward}", &data.reward_name)
+            .replace("{cost}", &data.reward_cost.to_string());
+
+        assert_eq!(
+            rendered,
+            "viewer123 использовал награду Custom Reward Name за 100 очков"
+        );
+        assert!(!rendered.contains("{user}"));
+        assert!(!rendered.contains("{reward}"));
+        assert!(!rendered.contains("{cost}"));
+    }
+
+    #[test]
+    fn test_placeholder_replacement_unused_placeholders_remain() {
+        // Test that unused placeholders remain unchanged
+        let template = "{streamer} играет в {game}";
+        let data = StreamOnlineData {
+            streamer_name: "HafMC".to_string(),
+            streamer_avatar: None,
+            title: "Test".to_string(),
+            category: "Just Chatting".to_string(),
+            thumbnail_url: None,
+        };
+
+        let rendered = template
+            .replace("{streamer}", &data.streamer_name)
+            .replace("{title}", &data.title);
+
+        // {game} should remain because it wasn't replaced
+        assert_eq!(rendered, "HafMC играет в {game}");
+        assert!(!rendered.contains("{streamer}"));
+        assert!(rendered.contains("{game}"));
+    }
+
+    #[test]
+    fn test_placeholder_replacement_special_characters() {
+        let template = "{streamer}: {title}";
+        let data = StreamOnlineData {
+            streamer_name: "HafMC & Friends".to_string(),
+            streamer_avatar: None,
+            title: "Test <script>alert('xss')</script>".to_string(),
+            category: "Just Chatting".to_string(),
+            thumbnail_url: None,
+        };
+
+        let rendered = template
+            .replace("{streamer}", &data.streamer_name)
+            .replace("{title}", &data.title);
+
+        assert_eq!(
+            rendered,
+            "HafMC & Friends: Test <script>alert('xss')</script>"
+        );
     }
 
     /// Test that reward redemption notification logic only checks integration setting,
@@ -364,39 +480,30 @@ impl NotificationService {
 
         // Render the message according to user settings and content
         let message = match content {
-            NotificationContent::StreamOnline(data) => {
-                let template = normalize_placeholders(&settings.stream_online_message);
-                template
-                    .replace("{streamer}", &data.streamer_name)
-                    .replace("{title}", &data.title)
-                    .replace("{category}", &data.category)
-                    .replace("{game}", &data.category)
-                    .replace("{url}", stream_url.as_deref().unwrap_or(""))
-            }
-            NotificationContent::StreamOffline(data) => {
-                let template = normalize_placeholders(&settings.stream_offline_message);
-                template.replace("{streamer}", &data.streamer_name)
-            }
-            NotificationContent::TitleChange(data) => {
-                let template = normalize_placeholders(&settings.stream_title_change_message);
-                template
-                    .replace("{streamer}", &data.streamer_name)
-                    .replace("{title}", &data.new_title)
-            }
-            NotificationContent::CategoryChange(data) => {
-                let template = normalize_placeholders(&settings.stream_category_change_message);
-                template
-                    .replace("{streamer}", &data.streamer_name)
-                    .replace("{category}", &data.new_category)
-                    .replace("{game}", &data.new_category)
-            }
-            NotificationContent::RewardRedemption(data) => {
-                let template = normalize_placeholders(&settings.reward_redemption_message);
-                template
-                    .replace("{user}", &data.redeemer_name)
-                    .replace("{reward}", &data.reward_name)
-                    .replace("{cost}", &data.reward_cost.to_string())
-            }
+            NotificationContent::StreamOnline(data) => settings
+                .stream_online_message
+                .replace("{streamer}", &data.streamer_name)
+                .replace("{title}", &data.title)
+                .replace("{category}", &data.category)
+                .replace("{game}", &data.category)
+                .replace("{url}", stream_url.as_deref().unwrap_or("")),
+            NotificationContent::StreamOffline(data) => settings
+                .stream_offline_message
+                .replace("{streamer}", &data.streamer_name),
+            NotificationContent::TitleChange(data) => settings
+                .stream_title_change_message
+                .replace("{streamer}", &data.streamer_name)
+                .replace("{title}", &data.new_title),
+            NotificationContent::CategoryChange(data) => settings
+                .stream_category_change_message
+                .replace("{streamer}", &data.streamer_name)
+                .replace("{category}", &data.new_category)
+                .replace("{game}", &data.new_category),
+            NotificationContent::RewardRedemption(data) => settings
+                .reward_redemption_message
+                .replace("{user}", &data.redeemer_name)
+                .replace("{reward}", &data.reward_name)
+                .replace("{cost}", &data.reward_cost.to_string()),
         };
 
         let mut results: Vec<NotificationResult> = Vec::new();
@@ -684,8 +791,6 @@ impl NotificationService {
 
         Ok(results)
     }
-
-    // normalize_placeholders moved to module level
 
     /// Send a notification via Telegram for any notification content
     async fn send_telegram_notification<'a>(

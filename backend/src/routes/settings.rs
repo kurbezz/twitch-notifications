@@ -613,38 +613,3 @@ fn get_placeholders_info() -> PlaceholdersInfo {
         ],
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::services::settings::SettingsService;
-
-    #[test]
-    fn normalize_placeholders_basic() {
-        assert_eq!(
-            SettingsService::normalize_placeholders("Hello {{streamer}}!"),
-            "Hello {streamer}!"
-        );
-        assert_eq!(
-            SettingsService::normalize_placeholders("{{title}} — {{game}}"),
-            "{title} — {game}"
-        );
-        assert_eq!(
-            SettingsService::normalize_placeholders("No placeholders here"),
-            "No placeholders here"
-        );
-    }
-
-    #[test]
-    fn normalize_placeholders_edgecases() {
-        // Triple braces collapse by one level: "Weird {{{streamer}}}" -> "Weird {{streamer}}"
-        assert_eq!(
-            SettingsService::normalize_placeholders("Weird {{{streamer}}}"),
-            "Weird {{streamer}}"
-        );
-        // Unmatched braces are preserved
-        assert_eq!(
-            SettingsService::normalize_placeholders("Broken {{streamer"),
-            "Broken {{streamer"
-        );
-    }
-}

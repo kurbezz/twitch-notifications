@@ -14,7 +14,6 @@ use crate::services::notifications::{
     CategoryChangeData, NotificationContent, NotificationService, RewardRedemptionData,
     StreamOfflineData, StreamOnlineData, TitleChangeData,
 };
-use crate::services::settings::SettingsService;
 use crate::AppState;
 
 type HmacSha256 = Hmac<Sha256>;
@@ -449,9 +448,8 @@ impl WebhookService {
         // Send chat message if enabled
         let settings = NotificationSettingsRepository::get_or_create(&state.db, &user.id).await?;
         if settings.notify_reward_redemption {
-            let template =
-                SettingsService::normalize_placeholders(&settings.reward_redemption_message);
-            let message = template
+            let message = settings
+                .reward_redemption_message
                 .replace("{user}", &data.redeemer_name)
                 .replace("{reward}", &data.reward_name)
                 .replace("{cost}", &data.reward_cost.to_string());

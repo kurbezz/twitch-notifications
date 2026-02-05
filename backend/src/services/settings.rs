@@ -10,32 +10,6 @@ use crate::AppState;
 pub struct SettingsService;
 
 impl SettingsService {
-    /// Normalize placeholders in a message template.
-    /// Converts occurrences like `{{streamer}}` into `{streamer}`.
-    pub fn normalize_placeholders(msg: &str) -> String {
-        let mut result = String::with_capacity(msg.len());
-        let mut start = 0usize;
-
-        while let Some(open_rel) = msg[start..].find("{{") {
-            let open = start + open_rel;
-            if let Some(close_rel) = msg[open + 2..].find("}}") {
-                let close = open + 2 + close_rel;
-                result.push_str(&msg[start..open]);
-                let inner = &msg[open + 2..close];
-                result.push('{');
-                result.push_str(inner);
-                result.push('}');
-                start = close + 2;
-            } else {
-                result.push_str(&msg[start..]);
-                return result;
-            }
-        }
-
-        result.push_str(&msg[start..]);
-        result
-    }
-
     /// Validate a notification message
     pub fn validate_message(message: &str, message_type: &str) -> AppResult<()> {
         if message.is_empty() {
@@ -90,17 +64,6 @@ impl SettingsService {
         stream_category_change_message: Option<String>,
         reward_redemption_message: Option<String>,
     ) -> AppResult<crate::db::NotificationSettings> {
-        // Normalize placeholders
-        let stream_online_message = stream_online_message.map(|m| Self::normalize_placeholders(&m));
-        let stream_offline_message =
-            stream_offline_message.map(|m| Self::normalize_placeholders(&m));
-        let stream_title_change_message =
-            stream_title_change_message.map(|m| Self::normalize_placeholders(&m));
-        let stream_category_change_message =
-            stream_category_change_message.map(|m| Self::normalize_placeholders(&m));
-        let reward_redemption_message =
-            reward_redemption_message.map(|m| Self::normalize_placeholders(&m));
-
         // Validate messages
         if let Some(ref msg) = stream_online_message {
             Self::validate_message(msg, "stream_online")?;
