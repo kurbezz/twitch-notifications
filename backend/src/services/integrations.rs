@@ -123,7 +123,7 @@ impl IntegrationService {
         chat_type: Option<&str>,
         provided_chat_id: &str,
     ) -> AppResult<String> {
-        if chat_type.as_deref() == Some("private") {
+        if chat_type == Some("private") {
             if owner_id != auth_user.id {
                 // Creating for another user - use editor's telegram_user_id
                 auth_user.telegram_user_id.clone().ok_or_else(|| {

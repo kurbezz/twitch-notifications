@@ -365,28 +365,25 @@ impl AuthService {
 
         // Try direct GET first
         if let Some(url) = photo_url {
-            match client.get(url).send().await {
-                Ok(resp) => {
-                    if resp.status().is_success() {
-                        let content_type = resp
-                            .headers()
-                            .get(reqwest::header::CONTENT_TYPE)
-                            .and_then(|v| v.to_str().ok())
-                            .unwrap_or("");
-                        let mime = content_type.split(';').next().unwrap_or("");
-                        if mime.starts_with("image/") {
-                            let subtype = mime.split('/').nth(1).unwrap_or("jpeg");
-                            ext = match subtype {
-                                "jpeg" | "jpg" => "jpg".to_string(),
-                                "png" => "png".to_string(),
-                                "webp" => "webp".to_string(),
-                                _ => "jpg".to_string(),
-                            };
-                            bytes_opt = Some(resp.bytes().await?);
-                        }
+            if let Ok(resp) = client.get(url).send().await {
+                if resp.status().is_success() {
+                    let content_type = resp
+                        .headers()
+                        .get(reqwest::header::CONTENT_TYPE)
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("");
+                    let mime = content_type.split(';').next().unwrap_or("");
+                    if mime.starts_with("image/") {
+                        let subtype = mime.split('/').nth(1).unwrap_or("jpeg");
+                        ext = match subtype {
+                            "jpeg" | "jpg" => "jpg".to_string(),
+                            "png" => "png".to_string(),
+                            "webp" => "webp".to_string(),
+                            _ => "jpg".to_string(),
+                        };
+                        bytes_opt = Some(resp.bytes().await?);
                     }
                 }
-                Err(_) => {}
             }
         }
 

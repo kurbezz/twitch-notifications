@@ -496,7 +496,7 @@ mod tests {
             .await?;
 
         // Create a minimal users table (including `lang`)
-        sqlx::query!(
+        sqlx::query(
             r#"
             CREATE TABLE users (
                 id TEXT PRIMARY KEY,
@@ -526,7 +526,7 @@ mod tests {
         let now = Utc::now().naive_utc();
         let id = Uuid::new_v4().to_string();
 
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO users (
                 id, twitch_id, twitch_login, twitch_display_name,
@@ -535,19 +535,19 @@ mod tests {
                 lang, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
-            id,
-            "t123",
-            "login",
-            "display",
-            "email",
-            "profile",
-            "access",
-            "refresh",
-            now,
-            Some("en"),
-            now,
-            now
         )
+        .bind(&id)
+        .bind("t123")
+        .bind("login")
+        .bind("display")
+        .bind("email")
+        .bind("profile")
+        .bind("access")
+        .bind("refresh")
+        .bind(now)
+        .bind(Some("en"))
+        .bind(now)
+        .bind(now)
         .execute(&pool)
         .await?;
 

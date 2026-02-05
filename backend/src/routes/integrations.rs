@@ -21,6 +21,7 @@ use crate::AppState;
 mod tests {
     use super::*;
     use crate::db::User;
+    use crate::services::integrations::IntegrationService;
     use chrono::Utc;
 
     fn make_user_with_discord(id: &str, discord_id: Option<&str>) -> User {
@@ -53,7 +54,8 @@ mod tests {
         // auth_user has same id (owner creating for themselves)
         let auth_user = owner.clone();
 
-        let res = select_discord_account_to_check(&owner.id, &auth_user, &owner);
+        let res =
+            IntegrationService::select_discord_account_to_check(&owner.id, &auth_user, &owner);
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), "owner_disc".to_string());
     }
@@ -63,7 +65,8 @@ mod tests {
         let owner = make_user_with_discord("owner", None);
         let auth_user = make_user_with_discord("grantee", Some("grantee_disc"));
 
-        let res = select_discord_account_to_check(&owner.id, &auth_user, &owner);
+        let res =
+            IntegrationService::select_discord_account_to_check(&owner.id, &auth_user, &owner);
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), "grantee_disc".to_string());
     }
@@ -74,7 +77,8 @@ mod tests {
         // auth_user also missing discord
         let auth_user = make_user_with_discord("owner", None);
 
-        let res = select_discord_account_to_check(&owner.id, &auth_user, &owner);
+        let res =
+            IntegrationService::select_discord_account_to_check(&owner.id, &auth_user, &owner);
         match res {
             Err(AppError::BadRequest(msg)) => {
                 // message should be localized key translation (non-empty)
