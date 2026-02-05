@@ -1047,7 +1047,7 @@ impl crate::services::notifications::Notifier for DiscordService {
         content: crate::services::notifications::NotificationContent<'a>,
         _settings: &crate::db::NotificationSettings,
         stream_url: Option<String>,
-        message: String,
+        _message: String,
     ) -> crate::error::AppResult<()> {
         let (embed, username, avatar) = match content {
             crate::services::notifications::NotificationContent::StreamOnline(data) => {
@@ -1099,7 +1099,7 @@ impl crate::services::notifications::Notifier for DiscordService {
 
         if let Some(webhook_url) = &ctx.webhook_url {
             let msg = WebhookMessage {
-                content: Some(message),
+                content: None,
                 username,
                 avatar_url: avatar,
                 embeds: Some(vec![embed]),
@@ -1107,7 +1107,7 @@ impl crate::services::notifications::Notifier for DiscordService {
             self.send_webhook_message(webhook_url, msg).await
         } else {
             let msg = DiscordMessage {
-                content: Some(message),
+                content: None,
                 embeds: Some(vec![embed]),
                 tts: None,
             };

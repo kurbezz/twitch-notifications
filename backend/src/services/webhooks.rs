@@ -345,7 +345,7 @@ impl WebhookService {
         event: ChannelUpdateEvent,
     ) -> AppResult<()> {
         // Check what changed
-        let (title_changed, category_changed) = {
+        let (is_live, title_changed, category_changed) = {
             let mut cache = STREAM_STATE_CACHE.write().await;
             let (prev_is_live, prev_title, prev_category_id) = cache
                 .get(&event.broadcaster_user_id)
@@ -371,10 +371,19 @@ impl WebhookService {
                 },
             );
 
-            (title_changed, category_changed)
+            (prev_is_live, title_changed, category_changed)
         };
 
         if !title_changed && !category_changed {
+            return Ok(());
+        }
+
+        // Only send notifications if stream is online
+        if !is_live {
+            tracing::debug!(
+                "Skipping title/category change notifications for {}: stream is offline",
+                event.broadcaster_user_id
+            );
             return Ok(());
         }
 
@@ -419,6 +428,24 @@ impl WebhookService {
         state: &Arc<AppState>,
         event: ChannelPointsRedemptionEvent,
     ) -> AppResult<()> {
+        // Check if stream is online
+        let is_live = {
+            let cache = STREAM_STATE_CACHE.read().await;
+            cache
+                .get(&event.broadcaster_user_id)
+                .map(|state| state.is_live)
+                .unwrap_or(false)
+        };
+
+        // Only send notifications if stream is online
+        if !is_live {
+            tracing::debug!(
+                "Skipping reward redemption notification for {}: stream is offline",
+                event.broadcaster_user_id
+            );
+            return Ok(());
+        }
+
         let user =
             match UserRepository::find_by_twitch_id(&state.db, &event.broadcaster_user_id).await? {
                 Some(u) => u,
