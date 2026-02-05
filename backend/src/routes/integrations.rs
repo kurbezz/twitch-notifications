@@ -9,34 +9,14 @@ use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
 use crate::db::{
-    CreateDiscordIntegration, CreateTelegramIntegration, DiscordIntegration,
-    DiscordIntegrationRepository, SettingsShareRepository, TelegramIntegration,
-    TelegramIntegrationRepository, UpdateDiscordIntegration, UpdateTelegramIntegration,
-    UserRepository,
+    CreateDiscordIntegration, DiscordIntegration, TelegramIntegration,
+    UpdateDiscordIntegration, UpdateTelegramIntegration, UserRepository,
 };
 use crate::error::{AppError, AppErrorWithDetails, AppResult};
 use crate::routes::auth::AuthUser;
+use crate::services::integrations::IntegrationService;
 use crate::AppState;
 
-// Helper for selecting which discord account id to use when checking permissions.
-// Returns Err(AppError::BadRequest) when the selected account is not linked.
-fn select_discord_account_to_check(
-    owner_id: &str,
-    auth_user: &crate::db::User,
-    owner_user: &crate::db::User,
-) -> Result<String, AppError> {
-    if owner_id == auth_user.id {
-        owner_user
-            .discord_user_id
-            .clone()
-            .ok_or_else(|| AppError::BadRequest(crate::i18n::t("bad_request.no_discord_linked")))
-    } else {
-        auth_user
-            .discord_user_id
-            .clone()
-            .ok_or_else(|| AppError::BadRequest(crate::i18n::t("bad_request.no_discord_linked")))
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -303,25 +283,17 @@ async fn list_telegram_integrations(
 ) -> AppResult<Json<Vec<TelegramIntegrationResponse>>> {
     let owner_id = query.user_id.clone().unwrap_or_else(|| user.id.clone());
 
-    if owner_id != user.id {
-        // Must be shared (read access)
-        let share =
-            SettingsShareRepository::find_by_owner_and_grantee(&state.db, &owner_id, &user.id)
-                .await?;
-        if share.is_none() {
-            tracing::warn!(
-                "Access denied: user {} attempted to list telegram integrations of owner {} without share",
-                user.id,
-                owner_id
-            );
-            return Err(AppError::Forbidden);
-        }
+    if !IntegrationService::check_access(&state, &owner_id, &user.id, false).await? {
+        tracing::warn!(
+            "Access denied: user {} attempted to list telegram integrations of owner {} without share",
+            user.id,
+            owner_id
+        );
+        return Err(AppError::Forbidden);
     }
 
-    let integrations = TelegramIntegrationRepository::find_by_user_id(&state.db, &owner_id).await?;
-
-    let response: Vec<TelegramIntegrationResponse> =
-        integrations.into_iter().map(Into::into).collect();
+    let integrations = IntegrationService::list_telegram_integrations(&state, &owner_id).await?;
+    let response: Vec<TelegramIntegrationResponse> = integrations.into_iter().map(Into::into).collect();
 
     Ok(Json(response))
 }
@@ -335,154 +307,49 @@ async fn create_telegram_integration(
 ) -> AppResult<Json<TelegramIntegrationResponse>> {
     let owner_id = query.user_id.clone().unwrap_or_else(|| user.id.clone());
 
-    if owner_id != user.id {
-        // Ensure shared with manage rights
-        let share =
-            SettingsShareRepository::find_by_owner_and_grantee(&state.db, &owner_id, &user.id)
-                .await?;
-        match share {
-            Some(s) if s.can_manage => {}
-            _ => {
-                tracing::warn!(
-                    "Access denied: user {} attempted to create telegram integration for owner {} without manage rights",
-                    user.id,
-                    owner_id
-                );
-                return Err(AppError::Forbidden);
-            }
-        }
+    if !IntegrationService::check_access(&state, &owner_id, &user.id, true).await? {
+        tracing::warn!(
+            "Access denied: user {} attempted to create telegram integration for owner {} without manage rights",
+            user.id,
+            owner_id
+        );
+        return Err(AppError::Forbidden);
     }
 
-    // Ensure the owner has linked a Telegram account on their profile before allowing integrations.
     let owner = UserRepository::find_by_id(&state.db, &owner_id)
         .await?
         .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
-    // Determine effective chat type and chat id.
-    let chat_type = request
-        .telegram_chat_type
-        .clone()
-        .or(Some("private".to_string()));
+    let chat_type = request.telegram_chat_type.clone().or(Some("private".to_string()));
+    let chat_id = IntegrationService::determine_telegram_chat_id(
+        &owner_id,
+        &user,
+        &owner,
+        chat_type.as_deref(),
+        &request.telegram_chat_id,
+    )?;
 
-    // For private chats: when creating for another user, use the editor's telegram_user_id;
-    // when creating for self, use the owner's telegram_user_id.
-    let mut chat_id_to_check = if chat_type.as_deref() == Some("private") {
-        if owner_id != user.id {
-            // Creating personal chat integration for another user - use editor's telegram_user_id
-            user.telegram_user_id.clone().ok_or_else(|| {
-                tracing::warn!(
-                    "Cannot create telegram integration: editor {} has not linked a Telegram account",
-                    user.id
-                );
-                AppError::Validation(crate::i18n::t(
-                    "validation.owner_telegram_not_linked",
-                ))
-            })?
-        } else {
-            // Creating personal chat integration for self - use owner's telegram_user_id
-            owner.telegram_user_id.clone().ok_or_else(|| {
-                tracing::warn!(
-                    "Cannot create telegram integration: owner {} has not linked a Telegram account",
-                    owner_id
-                );
-                AppError::Validation(crate::i18n::t(
-                    "validation.owner_telegram_not_linked",
-                ))
-            })?
-        }
-    } else {
-        // For non-private chats, validate that owner has linked Telegram account
-        if owner.telegram_user_id.is_none() {
-            tracing::warn!(
-                "Cannot create telegram integration: owner {} has not linked a Telegram account",
-                owner_id
-            );
-            return Err(AppError::Validation(crate::i18n::t(
-                "validation.owner_telegram_not_linked",
-            )));
-        }
-        request.telegram_chat_id.clone()
-    };
+    IntegrationService::validate_telegram_chat_id(&chat_id, chat_type.as_deref())?;
 
-    // Trim chat id
-    chat_id_to_check = chat_id_to_check.trim().to_string();
-
-    // Validate chat id format for non-private chat types
-    match chat_type.as_deref() {
-        Some("group") => {
-            // Group IDs should be negative integers like -123456789
-            if chat_id_to_check.len() < 2
-                || !chat_id_to_check.starts_with('-')
-                || !chat_id_to_check[1..].chars().all(|c| c.is_ascii_digit())
-            {
-                return Err(AppError::Validation(crate::i18n::t(
-                    "validation.chat_id.group_invalid",
-                )));
-            }
+    // Check admin permissions for non-private chats
+    if let Some("group") | Some("supergroup") | Some("channel") = chat_type.as_deref() {
+        let owner_tg_id = owner.telegram_user_id.clone().ok_or_else(|| {
+            AppError::Validation(crate::i18n::t("validation.owner_telegram_not_linked"))
+        })?;
+        let is_admin = IntegrationService::check_telegram_admin(&state, &chat_id, &owner_tg_id).await?;
+        if !is_admin {
+            return Err(AppError::Validation(crate::i18n::t("validation.must_be_admin")));
         }
-        Some("supergroup") | Some("channel") => {
-            // Supergroups/channels typically use IDs starting with -100
-            if chat_id_to_check.len() < 5
-                || !chat_id_to_check.starts_with("-100")
-                || !chat_id_to_check[4..].chars().all(|c| c.is_ascii_digit())
-            {
-                return Err(AppError::Validation(crate::i18n::t(
-                    "validation.chat_id.supergroup_invalid",
-                )));
-            }
-        }
-        _ => {}
     }
 
-    // For group/supergroup/channel types, ensure the owner is an admin in the target chat.
-    match chat_type.as_deref() {
-        Some("group") | Some("supergroup") | Some("channel") => {
-            // Ensure Telegram service is initialized on the server
-            let tg_guard = state.telegram.read().await;
-            let telegram_service = tg_guard.as_ref().ok_or_else(|| {
-                AppError::Validation(crate::i18n::t("validation.telegram_bot_not_configured"))
-            })?;
-
-            let owner_tg_id = owner.telegram_user_id.clone().unwrap();
-            match telegram_service
-                .is_user_admin(&chat_id_to_check, &owner_tg_id)
-                .await
-            {
-                Ok(true) => {
-                    // Owner is admin — proceed
-                }
-                Ok(false) => {
-                    return Err(AppError::Validation(crate::i18n::t(
-                        "validation.must_be_admin",
-                    )));
-                }
-                Err(_) => {
-                    // Underlying error (e.g. bot not in chat) — return actionable message.
-                    return Err(AppError::Validation(crate::i18n::t(
-                        "validation.admin_check_failed",
-                    )));
-                }
-            }
-        }
-        _ => {}
-    }
-
-    // Check if integration already exists for this chat for the owner
-    let exists =
-        TelegramIntegrationRepository::exists(&state.db, &chat_id_to_check, &owner_id).await?;
-    if exists {
-        return Err(AppError::Conflict(
-            "Integration already exists for this chat".to_string(),
-        ));
-    }
-
-    let integration = CreateTelegramIntegration {
-        telegram_chat_id: chat_id_to_check,
-        telegram_chat_title: request.telegram_chat_title,
-        telegram_chat_type: chat_type,
-    };
-
-    let created = TelegramIntegrationRepository::create(&state.db, &owner_id, integration).await?;
+    let created = IntegrationService::create_telegram_integration(
+        &state,
+        &owner_id,
+        chat_id,
+        request.telegram_chat_title,
+        chat_type,
+    )
+    .await?;
 
     Ok(Json(created.into()))
 }
@@ -493,27 +360,18 @@ async fn get_telegram_integration(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> AppResult<Json<TelegramIntegrationResponse>> {
-    let integration = TelegramIntegrationRepository::find_by_id(&state.db, &id)
+    let integration = IntegrationService::get_telegram_integration(&state, &id)
         .await?
         .ok_or_else(|| AppError::NotFound(crate::i18n::t("not_found.integration")))?;
 
-    // Verify ownership or shared read access
-    if integration.user_id != user.id {
-        let share = SettingsShareRepository::find_by_owner_and_grantee(
-            &state.db,
-            &integration.user_id,
-            &user.id,
-        )
-        .await?;
-        if share.is_none() {
-            tracing::warn!(
-                "Access denied: user {} attempted to view telegram integration {} owned by {} without share",
-                user.id,
-                id,
-                integration.user_id
-            );
-            return Err(AppError::Forbidden);
-        }
+    if !IntegrationService::check_access(&state, &integration.user_id, &user.id, false).await? {
+        tracing::warn!(
+            "Access denied: user {} attempted to view telegram integration {} owned by {} without share",
+            user.id,
+            id,
+            integration.user_id
+        );
+        return Err(AppError::Forbidden);
     }
 
     Ok(Json(integration.into()))
@@ -526,31 +384,18 @@ async fn update_telegram_integration(
     Path(id): Path<String>,
     Json(request): Json<UpdateTelegramRequest>,
 ) -> AppResult<Json<TelegramIntegrationResponse>> {
-    // Verify ownership or shared manage access
-    let existing = TelegramIntegrationRepository::find_by_id(&state.db, &id)
+    let existing = IntegrationService::get_telegram_integration(&state, &id)
         .await?
         .ok_or_else(|| AppError::NotFound(crate::i18n::t("not_found.integration")))?;
 
-    if existing.user_id != user.id {
-        // Ensure shared with manage rights
-        let share = SettingsShareRepository::find_by_owner_and_grantee(
-            &state.db,
-            &existing.user_id,
-            &user.id,
-        )
-        .await?;
-        match share {
-            Some(s) if s.can_manage => {}
-            _ => {
-                tracing::warn!(
-                    "Access denied: user {} attempted to update telegram integration {} owned by {} without manage rights",
-                    user.id,
-                    id,
-                    existing.user_id
-                );
-                return Err(AppError::Forbidden);
-            }
-        }
+    if !IntegrationService::check_access(&state, &existing.user_id, &user.id, true).await? {
+        tracing::warn!(
+            "Access denied: user {} attempted to update telegram integration {} owned by {} without manage rights",
+            user.id,
+            id,
+            existing.user_id
+        );
+        return Err(AppError::Forbidden);
     }
 
     let update = UpdateTelegramIntegration {
@@ -563,7 +408,7 @@ async fn update_telegram_integration(
         notify_reward_redemption: request.notify_reward_redemption,
     };
 
-    let updated = TelegramIntegrationRepository::update(&state.db, &id, update).await?;
+    let updated = IntegrationService::update_telegram_integration(&state, &id, update).await?;
 
     Ok(Json(updated.into()))
 }
@@ -574,33 +419,21 @@ async fn delete_telegram_integration(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> AppResult<Json<serde_json::Value>> {
-    // Verify ownership or shared manage access
-    let existing = TelegramIntegrationRepository::find_by_id(&state.db, &id)
+    let existing = IntegrationService::get_telegram_integration(&state, &id)
         .await?
         .ok_or_else(|| AppError::NotFound(crate::i18n::t("not_found.integration")))?;
 
-    if existing.user_id != user.id {
-        let share = SettingsShareRepository::find_by_owner_and_grantee(
-            &state.db,
-            &existing.user_id,
-            &user.id,
-        )
-        .await?;
-        match share {
-            Some(s) if s.can_manage => {}
-            _ => {
-                tracing::warn!(
-                    "Access denied: user {} attempted to delete telegram integration {} owned by {} without manage rights",
-                    user.id,
-                    id,
-                    existing.user_id
-                );
-                return Err(AppError::Forbidden);
-            }
-        }
+    if !IntegrationService::check_access(&state, &existing.user_id, &user.id, true).await? {
+        tracing::warn!(
+            "Access denied: user {} attempted to delete telegram integration {} owned by {} without manage rights",
+            user.id,
+            id,
+            existing.user_id
+        );
+        return Err(AppError::Forbidden);
     }
 
-    TelegramIntegrationRepository::delete(&state.db, &id).await?;
+    IntegrationService::delete_telegram_integration(&state, &id).await?;
 
     Ok(Json(serde_json::json!({
         "message": crate::i18n::t("integration.deleted")
@@ -613,30 +446,18 @@ async fn test_telegram_integration(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> AppResult<Json<TestNotificationResponse>> {
-    // Verify ownership or shared manage access
-    let integration = TelegramIntegrationRepository::find_by_id(&state.db, &id)
+    let integration = IntegrationService::get_telegram_integration(&state, &id)
         .await?
         .ok_or_else(|| AppError::NotFound(crate::i18n::t("not_found.integration")))?;
 
-    if integration.user_id != user.id {
-        let share = SettingsShareRepository::find_by_owner_and_grantee(
-            &state.db,
-            &integration.user_id,
-            &user.id,
-        )
-        .await?;
-        match share {
-            Some(s) if s.can_manage => {}
-            _ => {
-                tracing::warn!(
-                    "Access denied: user {} attempted to test telegram integration {} owned by {} without manage rights",
-                    user.id,
-                    id,
-                    integration.user_id
-                );
-                return Err(AppError::Forbidden);
-            }
-        }
+    if !IntegrationService::check_access(&state, &integration.user_id, &user.id, true).await? {
+        tracing::warn!(
+            "Access denied: user {} attempted to test telegram integration {} owned by {} without manage rights",
+            user.id,
+            id,
+            integration.user_id
+        );
+        return Err(AppError::Forbidden);
     }
 
     let telegram_guard = state.telegram.read().await;
@@ -688,25 +509,17 @@ async fn list_discord_integrations(
 ) -> AppResult<Json<Vec<DiscordIntegrationResponse>>> {
     let owner_id = query.user_id.clone().unwrap_or_else(|| user.id.clone());
 
-    if owner_id != user.id {
-        // Must be shared (read access)
-        let share =
-            SettingsShareRepository::find_by_owner_and_grantee(&state.db, &owner_id, &user.id)
-                .await?;
-        if share.is_none() {
-            tracing::warn!(
-                "Access denied: user {} attempted to list discord integrations of owner {} without share",
-                user.id,
-                owner_id
-            );
-            return Err(AppError::Forbidden);
-        }
+    if !IntegrationService::check_access(&state, &owner_id, &user.id, false).await? {
+        tracing::warn!(
+            "Access denied: user {} attempted to list discord integrations of owner {} without share",
+            user.id,
+            owner_id
+        );
+        return Err(AppError::Forbidden);
     }
 
-    let integrations = DiscordIntegrationRepository::find_by_user_id(&state.db, &owner_id).await?;
-
-    let response: Vec<DiscordIntegrationResponse> =
-        integrations.into_iter().map(Into::into).collect();
+    let integrations = IntegrationService::list_discord_integrations(&state, &owner_id).await?;
+    let response: Vec<DiscordIntegrationResponse> = integrations.into_iter().map(Into::into).collect();
 
     Ok(Json(response))
 }
@@ -720,50 +533,30 @@ async fn create_discord_integration(
 ) -> Result<Json<DiscordIntegrationResponse>, AppErrorWithDetails> {
     let owner_id = query.user_id.clone().unwrap_or_else(|| user.id.clone());
 
-    if owner_id != user.id {
-        // Необходимо иметь доступ на управление (share с правами manage)
-        let share =
-            SettingsShareRepository::find_by_owner_and_grantee(&state.db, &owner_id, &user.id)
-                .await?;
-        match share {
-            Some(s) if s.can_manage => {}
-            _ => {
-                tracing::warn!(
-                    "Отказ в доступе: пользователь {} попытался создать Discord-интеграцию от имени {} без прав на управление",
-                    user.id,
-                    owner_id
-                );
-                return Err(AppError::Forbidden.with_details(serde_json::json!({
-                    "reason": "no_share_manage",
-                    "message": crate::i18n::t("errors.no_share_manage")
-                })));
-            }
-        }
+    if !IntegrationService::check_access(&state, &owner_id, &user.id, true).await? {
+        tracing::warn!(
+            "Отказ в доступе: пользователь {} попытался создать Discord-интеграцию от имени {} без прав на управление",
+            user.id,
+            owner_id
+        );
+        return Err(AppError::Forbidden.with_details(serde_json::json!({
+            "reason": "no_share_manage",
+            "message": crate::i18n::t("errors.no_share_manage")
+        })));
     }
 
-    // Get owner user record. When creating integration on behalf of another user
-    // we allow the requesting user (grantee) to use their linked Discord account
-    // to check/manage server permissions. When creating for self, require the
-    // owner's Discord to be linked.
     let owner_user = UserRepository::find_by_id(&state.db, &owner_id)
         .await?
         .ok_or_else(|| AppError::NotFound(crate::i18n::t("not_found.user")))?;
 
-    // Determine which Discord account to use for permission checks and validate it.
-    // See `select_discord_account_to_check` below for testable logic.
-    let discord_account_to_check = select_discord_account_to_check(&owner_id, &user, &owner_user)?;
+    let discord_account_to_check = IntegrationService::select_discord_account_to_check(&owner_id, &user, &owner_user)?;
 
-    // Убедимся, что сервис Discord доступен и проверим права выбранного аккаунта на сервере
-    let discord_guard = state.discord.read().await;
-    let discord = discord_guard.as_ref().ok_or_else(|| {
-        AppError::ServiceUnavailable(crate::i18n::t(
-            "service_unavailable.discord_service_unavailable",
-        ))
-    })?;
-
-    let has_manage = discord
-        .user_has_manage_permissions(&request.discord_guild_id, &discord_account_to_check)
-        .await?;
+    let has_manage = IntegrationService::check_discord_manage_permissions(
+        &state,
+        &request.discord_guild_id,
+        &discord_account_to_check,
+    )
+    .await?;
 
     if !has_manage {
         tracing::warn!(
@@ -785,7 +578,7 @@ async fn create_discord_integration(
         discord_webhook_url: request.discord_webhook_url,
     };
 
-    let created = DiscordIntegrationRepository::create(&state.db, &owner_id, integration).await?;
+    let created = IntegrationService::create_discord_integration(&state, &owner_id, integration).await?;
 
     Ok(Json(created.into()))
 }
@@ -796,27 +589,18 @@ async fn get_discord_integration(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> AppResult<Json<DiscordIntegrationResponse>> {
-    let integration = DiscordIntegrationRepository::find_by_id(&state.db, &id)
+    let integration = IntegrationService::get_discord_integration(&state, &id)
         .await?
         .ok_or_else(|| AppError::NotFound(crate::i18n::t("not_found.integration")))?;
 
-    // Verify ownership or shared read access
-    if integration.user_id != user.id {
-        let share = SettingsShareRepository::find_by_owner_and_grantee(
-            &state.db,
-            &integration.user_id,
-            &user.id,
-        )
-        .await?;
-        if share.is_none() {
-            tracing::warn!(
-                "Access denied: user {} attempted to view discord integration {} owned by {} without share",
-                user.id,
-                id,
-                integration.user_id
-            );
-            return Err(AppError::Forbidden);
-        }
+    if !IntegrationService::check_access(&state, &integration.user_id, &user.id, false).await? {
+        tracing::warn!(
+            "Access denied: user {} attempted to view discord integration {} owned by {} without share",
+            user.id,
+            id,
+            integration.user_id
+        );
+        return Err(AppError::Forbidden);
     }
 
     Ok(Json(integration.into()))
@@ -829,30 +613,18 @@ async fn update_discord_integration(
     Path(id): Path<String>,
     Json(request): Json<UpdateDiscordRequest>,
 ) -> AppResult<Json<DiscordIntegrationResponse>> {
-    // Verify ownership or shared manage access
-    let existing = DiscordIntegrationRepository::find_by_id(&state.db, &id)
+    let existing = IntegrationService::get_discord_integration(&state, &id)
         .await?
         .ok_or_else(|| AppError::NotFound(crate::i18n::t("not_found.integration")))?;
 
-    if existing.user_id != user.id {
-        let share = SettingsShareRepository::find_by_owner_and_grantee(
-            &state.db,
-            &existing.user_id,
-            &user.id,
-        )
-        .await?;
-        match share {
-            Some(s) if s.can_manage => {}
-            _ => {
-                tracing::warn!(
-                    "Access denied: user {} attempted to update discord integration {} owned by {} without manage rights",
-                    user.id,
-                    id,
-                    existing.user_id
-                );
-                return Err(AppError::Forbidden);
-            }
-        }
+    if !IntegrationService::check_access(&state, &existing.user_id, &user.id, true).await? {
+        tracing::warn!(
+            "Access denied: user {} attempted to update discord integration {} owned by {} without manage rights",
+            user.id,
+            id,
+            existing.user_id
+        );
+        return Err(AppError::Forbidden);
     }
 
     let update = UpdateDiscordIntegration {
@@ -868,36 +640,21 @@ async fn update_discord_integration(
         calendar_sync_enabled: request.calendar_sync_enabled,
     };
 
-    let updated = DiscordIntegrationRepository::update(&state.db, &id, update).await?;
+    let updated = IntegrationService::update_discord_integration(&state, &id, update).await?;
 
-    // If calendar sync was just enabled (user switched from false -> true), trigger an
-    // immediate background sync for this integration so events appear without waiting
-    // for the periodic worker interval.
+    // Trigger calendar sync if enabled
     let enabled_now = request.calendar_sync_enabled.unwrap_or(false);
     if enabled_now && !existing.calendar_sync_enabled {
         let state_clone = state.clone();
         let updated_clone = updated.clone();
         tokio::spawn(async move {
-            tracing::info!(
-                "Triggering immediate calendar sync for integration {}",
-                updated_clone.id
-            );
             if let Err(e) = crate::services::calendar::CalendarSyncManager::sync_for_integration(
                 &state_clone,
                 &updated_clone,
             )
             .await
             {
-                tracing::warn!(
-                    "Immediate calendar sync for integration {} failed: {:?}",
-                    updated_clone.id,
-                    e
-                );
-            } else {
-                tracing::info!(
-                    "Immediate calendar sync for integration {} completed",
-                    updated_clone.id
-                );
+                tracing::warn!("Immediate calendar sync for integration {} failed: {:?}", updated_clone.id, e);
             }
         });
     }
@@ -911,33 +668,21 @@ async fn delete_discord_integration(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> AppResult<Json<serde_json::Value>> {
-    // Verify ownership or shared manage access
-    let existing = DiscordIntegrationRepository::find_by_id(&state.db, &id)
+    let existing = IntegrationService::get_discord_integration(&state, &id)
         .await?
         .ok_or_else(|| AppError::NotFound(crate::i18n::t("not_found.integration")))?;
 
-    if existing.user_id != user.id {
-        let share = SettingsShareRepository::find_by_owner_and_grantee(
-            &state.db,
-            &existing.user_id,
-            &user.id,
-        )
-        .await?;
-        match share {
-            Some(s) if s.can_manage => {}
-            _ => {
-                tracing::warn!(
-                    "Access denied: user {} attempted to delete discord integration {} owned by {} without manage rights",
-                    user.id,
-                    id,
-                    existing.user_id
-                );
-                return Err(AppError::Forbidden);
-            }
-        }
+    if !IntegrationService::check_access(&state, &existing.user_id, &user.id, true).await? {
+        tracing::warn!(
+            "Access denied: user {} attempted to delete discord integration {} owned by {} without manage rights",
+            user.id,
+            id,
+            existing.user_id
+        );
+        return Err(AppError::Forbidden);
     }
 
-    DiscordIntegrationRepository::delete(&state.db, &id).await?;
+    IntegrationService::delete_discord_integration(&state, &id).await?;
 
     Ok(Json(serde_json::json!({
         "message": crate::i18n::t("integration.deleted")
@@ -950,30 +695,18 @@ async fn test_discord_integration(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> AppResult<Json<TestNotificationResponse>> {
-    // Verify ownership or shared manage access
-    let integration = DiscordIntegrationRepository::find_by_id(&state.db, &id)
+    let integration = IntegrationService::get_discord_integration(&state, &id)
         .await?
         .ok_or_else(|| AppError::NotFound(crate::i18n::t("not_found.integration")))?;
 
-    if integration.user_id != user.id {
-        let share = SettingsShareRepository::find_by_owner_and_grantee(
-            &state.db,
-            &integration.user_id,
-            &user.id,
-        )
-        .await?;
-        match share {
-            Some(s) if s.can_manage => {}
-            _ => {
-                tracing::warn!(
-                    "Access denied: user {} attempted to test discord integration {} owned by {} without manage rights",
-                    user.id,
-                    id,
-                    integration.user_id
-                );
-                return Err(AppError::Forbidden);
-            }
-        }
+    if !IntegrationService::check_access(&state, &integration.user_id, &user.id, true).await? {
+        tracing::warn!(
+            "Access denied: user {} attempted to test discord integration {} owned by {} without manage rights",
+            user.id,
+            id,
+            integration.user_id
+        );
+        return Err(AppError::Forbidden);
     }
 
     let discord_guard = state.discord.read().await;

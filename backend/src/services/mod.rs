@@ -1,7 +1,11 @@
+pub mod auth;
 pub mod calendar;
 pub mod discord;
 pub mod init;
+pub mod integrations;
 pub mod notifications;
+pub mod settings;
 pub mod subscriptions;
 pub mod telegram;
 pub mod twitch;
+pub mod webhooks;

@@ -9,12 +9,11 @@ use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
 use crate::db::{
-    DiscordIntegrationRepository, NotificationSettings, NotificationSettingsRepository,
-    SettingsShareRepository, TelegramIntegrationRepository, UpdateNotificationSettings,
-    UserRepository,
+    SettingsShareRepository, UserRepository,
 };
 use crate::error::{AppError, AppResult};
 use crate::routes::auth::AuthUser;
+use crate::services::settings::SettingsService;
 use crate::AppState;
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -122,7 +121,7 @@ async fn get_messages(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
 ) -> AppResult<Json<MessagesResponse>> {
-    let settings = NotificationSettingsRepository::get_or_create(&state.db, &user.id).await?;
+    let settings = SettingsService::get_settings(&state, &user.id).await?;
 
     Ok(Json(MessagesResponse {
         stream_online_message: settings.stream_online_message,
@@ -140,54 +139,16 @@ async fn update_messages(
     AuthUser(user): AuthUser,
     Json(request): Json<UpdateMessagesRequest>,
 ) -> AppResult<Json<MessagesResponse>> {
-    // Normalize placeholders (convert {{...}} -> {...}) and validate messages
-    let stream_online_message = request
-        .stream_online_message
-        .as_ref()
-        .map(|m| normalize_placeholders(m));
-    let stream_offline_message = request
-        .stream_offline_message
-        .as_ref()
-        .map(|m| normalize_placeholders(m));
-    let stream_title_change_message = request
-        .stream_title_change_message
-        .as_ref()
-        .map(|m| normalize_placeholders(m));
-    let stream_category_change_message = request
-        .stream_category_change_message
-        .as_ref()
-        .map(|m| normalize_placeholders(m));
-    let reward_redemption_message = request
-        .reward_redemption_message
-        .as_ref()
-        .map(|m| normalize_placeholders(m));
-
-    if let Some(ref msg) = stream_online_message {
-        validate_message(msg, "stream_online")?;
-    }
-    if let Some(ref msg) = stream_offline_message {
-        validate_message(msg, "stream_offline")?;
-    }
-    if let Some(ref msg) = stream_title_change_message {
-        validate_message(msg, "stream_title_change")?;
-    }
-    if let Some(ref msg) = stream_category_change_message {
-        validate_message(msg, "stream_category")?;
-    }
-    if let Some(ref msg) = reward_redemption_message {
-        validate_message(msg, "reward_redemption")?;
-    }
-
-    let update = UpdateNotificationSettings {
-        stream_online_message,
-        stream_offline_message,
-        stream_title_change_message,
-        stream_category_change_message,
-        reward_redemption_message,
-        notify_reward_redemption: None,
-    };
-
-    let settings = NotificationSettingsRepository::update(&state.db, &user.id, update).await?;
+    let settings = SettingsService::update_messages(
+        &state,
+        &user.id,
+        request.stream_online_message,
+        request.stream_offline_message,
+        request.stream_title_change_message,
+        request.stream_category_change_message,
+        request.reward_redemption_message,
+    )
+    .await?;
 
     Ok(Json(MessagesResponse {
         stream_online_message: settings.stream_online_message,
@@ -204,18 +165,7 @@ async fn reset_to_defaults(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
 ) -> AppResult<Json<MessagesResponse>> {
-    let defaults = NotificationSettings::default();
-
-    let update = UpdateNotificationSettings {
-        stream_online_message: Some(defaults.stream_online_message.clone()),
-        stream_offline_message: Some(defaults.stream_offline_message.clone()),
-        stream_title_change_message: Some(defaults.stream_title_change_message.clone()),
-        stream_category_change_message: Some(defaults.stream_category_change_message.clone()),
-        reward_redemption_message: Some(defaults.reward_redemption_message.clone()),
-        notify_reward_redemption: Some(defaults.notify_reward_redemption),
-    };
-
-    let settings = NotificationSettingsRepository::update(&state.db, &user.id, update).await?;
+    let settings = SettingsService::reset_to_defaults(&state, &user.id).await?;
 
     Ok(Json(MessagesResponse {
         stream_online_message: settings.stream_online_message,
@@ -232,21 +182,9 @@ async fn get_settings(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
 ) -> AppResult<Json<UserSettingsResponse>> {
-    let settings = NotificationSettingsRepository::get_or_create(&state.db, &user.id).await?;
-
-    let telegrams = TelegramIntegrationRepository::find_by_user_id(&state.db, &user.id).await?;
-    let discords = DiscordIntegrationRepository::find_by_user_id(&state.db, &user.id).await?;
-
-    let notify_stream_online = telegrams.iter().any(|i| i.notify_stream_online)
-        || discords.iter().any(|i| i.notify_stream_online);
-    let notify_stream_offline = telegrams.iter().any(|i| i.notify_stream_offline)
-        || discords.iter().any(|i| i.notify_stream_offline);
-    let notify_title_change = telegrams.iter().any(|i| i.notify_title_change)
-        || discords.iter().any(|i| i.notify_title_change);
-    let notify_category_change = telegrams.iter().any(|i| i.notify_category_change)
-        || discords.iter().any(|i| i.notify_category_change);
-    // Use the user-level setting for reward redemptions (persisted in user_settings).
-    let notify_reward_redemption = settings.notify_reward_redemption;
+    let settings = SettingsService::get_settings(&state, &user.id).await?;
+    let (notify_stream_online, notify_stream_offline, notify_title_change, notify_category_change) =
+        SettingsService::get_aggregated_notify_flags(&state, &user.id).await?;
 
     Ok(Json(UserSettingsResponse {
         id: settings.id,
@@ -260,7 +198,7 @@ async fn get_settings(
         notify_stream_offline,
         notify_title_change,
         notify_category_change,
-        notify_reward_redemption,
+        notify_reward_redemption: settings.notify_reward_redemption,
         created_at: settings.created_at,
         updated_at: settings.updated_at,
     }))
@@ -272,19 +210,7 @@ async fn update_settings(
     AuthUser(user): AuthUser,
     Json(request): Json<UpdateSettingsRequest>,
 ) -> AppResult<Json<UserSettingsResponse>> {
-    // Only update chat bot settings - integrations are managed separately
-    // notify_reward_redemption controls chat bot notifications only
-    let update_ns = UpdateNotificationSettings {
-        stream_online_message: None,
-        stream_offline_message: None,
-        stream_title_change_message: None,
-        stream_category_change_message: None,
-        reward_redemption_message: None,
-        notify_reward_redemption: request.notify_reward_redemption,
-    };
-    NotificationSettingsRepository::update(&state.db, &user.id, update_ns).await?;
-
-    // Return the updated settings
+    SettingsService::update_notify_reward_redemption(&state, &user.id, request.notify_reward_redemption).await?;
     get_settings(State(state), AuthUser(user)).await
 }
 
@@ -294,15 +220,11 @@ async fn get_settings_for_user(
     AuthUser(user): AuthUser,
     Path(owner_id): Path<String>,
 ) -> AppResult<Json<UserSettingsResponse>> {
-    // If requesting own settings, delegate to existing handler
     if owner_id == user.id {
         return get_settings(State(state), AuthUser(user)).await;
     }
 
-    // Must be shared
-    let share =
-        SettingsShareRepository::find_by_owner_and_grantee(&state.db, &owner_id, &user.id).await?;
-    if share.is_none() {
+    if !crate::services::integrations::IntegrationService::check_access(&state, &owner_id, &user.id, false).await? {
         tracing::warn!(
             "Access denied: user {} attempted to view settings of owner {} without share",
             user.id,
@@ -311,30 +233,9 @@ async fn get_settings_for_user(
         return Err(AppError::Forbidden);
     }
 
-    let settings = NotificationSettingsRepository::get_or_create(&state.db, &owner_id)
-        .await
-        .map_err(|e| {
-            tracing::error!(
-                "Failed to get/create settings for owner {} requested by {}: {:?}",
-                owner_id,
-                user.id,
-                e
-            );
-            e
-        })?;
-
-    let telegrams = TelegramIntegrationRepository::find_by_user_id(&state.db, &owner_id).await?;
-    let discords = DiscordIntegrationRepository::find_by_user_id(&state.db, &owner_id).await?;
-
-    let notify_stream_online = telegrams.iter().any(|i| i.notify_stream_online)
-        || discords.iter().any(|i| i.notify_stream_online);
-    let notify_stream_offline = telegrams.iter().any(|i| i.notify_stream_offline)
-        || discords.iter().any(|i| i.notify_stream_offline);
-    let notify_title_change = telegrams.iter().any(|i| i.notify_title_change)
-        || discords.iter().any(|i| i.notify_title_change);
-    let notify_category_change = telegrams.iter().any(|i| i.notify_category_change)
-        || discords.iter().any(|i| i.notify_category_change);
-    let notify_reward_redemption = settings.notify_reward_redemption;
+    let settings = SettingsService::get_settings(&state, &owner_id).await?;
+    let (notify_stream_online, notify_stream_offline, notify_title_change, notify_category_change) =
+        SettingsService::get_aggregated_notify_flags(&state, &owner_id).await?;
 
     Ok(Json(UserSettingsResponse {
         id: settings.id,
@@ -348,7 +249,7 @@ async fn get_settings_for_user(
         notify_stream_offline,
         notify_title_change,
         notify_category_change,
-        notify_reward_redemption,
+        notify_reward_redemption: settings.notify_reward_redemption,
         created_at: settings.created_at,
         updated_at: settings.updated_at,
     }))
@@ -365,39 +266,15 @@ async fn update_settings_for_user(
         return update_settings(State(state), AuthUser(user), Json(request)).await;
     }
 
-    // Ensure shared with manage rights
-    let share =
-        SettingsShareRepository::find_by_owner_and_grantee(&state.db, &owner_id, &user.id).await?;
-    match share {
-        Some(s) if s.can_manage => {}
-        _ => return Err(AppError::Forbidden),
+    if !crate::services::integrations::IntegrationService::check_access(&state, &owner_id, &user.id, true).await? {
+        return Err(AppError::Forbidden);
     }
 
-    // Only update chat bot settings - integrations are managed separately
-    // notify_reward_redemption controls chat bot notifications only
-    let update_ns = UpdateNotificationSettings {
-        stream_online_message: None,
-        stream_offline_message: None,
-        stream_title_change_message: None,
-        stream_category_change_message: None,
-        reward_redemption_message: None,
-        notify_reward_redemption: request.notify_reward_redemption,
-    };
-    let settings = NotificationSettingsRepository::update(&state.db, &owner_id, update_ns).await?;
+    SettingsService::update_notify_reward_redemption(&state, &owner_id, request.notify_reward_redemption).await?;
 
-    // Re-fetch integrations to compute current aggregated notify flags after per-integration updates
-    let telegrams = TelegramIntegrationRepository::find_by_user_id(&state.db, &owner_id).await?;
-    let discords = DiscordIntegrationRepository::find_by_user_id(&state.db, &owner_id).await?;
-
-    let notify_stream_online = telegrams.iter().any(|i| i.notify_stream_online)
-        || discords.iter().any(|i| i.notify_stream_online);
-    let notify_stream_offline = telegrams.iter().any(|i| i.notify_stream_offline)
-        || discords.iter().any(|i| i.notify_stream_offline);
-    let notify_title_change = telegrams.iter().any(|i| i.notify_title_change)
-        || discords.iter().any(|i| i.notify_title_change);
-    let notify_category_change = telegrams.iter().any(|i| i.notify_category_change)
-        || discords.iter().any(|i| i.notify_category_change);
-    let notify_reward_redemption = settings.notify_reward_redemption;
+    let settings = SettingsService::get_settings(&state, &owner_id).await?;
+    let (notify_stream_online, notify_stream_offline, notify_title_change, notify_category_change) =
+        SettingsService::get_aggregated_notify_flags(&state, &owner_id).await?;
 
     Ok(Json(UserSettingsResponse {
         id: settings.id,
@@ -411,7 +288,7 @@ async fn update_settings_for_user(
         notify_stream_offline,
         notify_title_change,
         notify_category_change,
-        notify_reward_redemption,
+        notify_reward_redemption: settings.notify_reward_redemption,
         created_at: settings.created_at,
         updated_at: settings.updated_at,
     }))
@@ -579,15 +456,11 @@ async fn get_messages_for_user(
     AuthUser(user): AuthUser,
     Path(owner_id): Path<String>,
 ) -> AppResult<Json<MessagesResponse>> {
-    // If requesting own messages, delegate to existing handler
     if owner_id == user.id {
         return get_messages(State(state), AuthUser(user)).await;
     }
 
-    // Must be shared
-    let share =
-        SettingsShareRepository::find_by_owner_and_grantee(&state.db, &owner_id, &user.id).await?;
-    if share.is_none() {
+    if !crate::services::integrations::IntegrationService::check_access(&state, &owner_id, &user.id, false).await? {
         tracing::warn!(
             "Access denied: user {} attempted to view messages of owner {} without share",
             user.id,
@@ -596,17 +469,7 @@ async fn get_messages_for_user(
         return Err(AppError::Forbidden);
     }
 
-    let settings = NotificationSettingsRepository::get_or_create(&state.db, &owner_id)
-        .await
-        .map_err(|e| {
-            tracing::error!(
-                "Failed to get/create settings for owner {} requested by {}: {:?}",
-                owner_id,
-                user.id,
-                e
-            );
-            e
-        })?;
+    let settings = SettingsService::get_settings(&state, &owner_id).await?;
 
     Ok(Json(MessagesResponse {
         stream_online_message: settings.stream_online_message,
@@ -625,67 +488,24 @@ async fn update_messages_for_user(
     Path(owner_id): Path<String>,
     Json(request): Json<UpdateMessagesRequest>,
 ) -> AppResult<Json<MessagesResponse>> {
-    // If updating own messages, delegate to existing handler
     if owner_id == user.id {
         return update_messages(State(state), AuthUser(user), Json(request)).await;
     }
 
-    // Ensure shared with manage rights
-    let share =
-        SettingsShareRepository::find_by_owner_and_grantee(&state.db, &owner_id, &user.id).await?;
-    match share {
-        Some(s) if s.can_manage => { /* allowed */ }
-        _ => return Err(AppError::Forbidden),
+    if !crate::services::integrations::IntegrationService::check_access(&state, &owner_id, &user.id, true).await? {
+        return Err(AppError::Forbidden);
     }
 
-    // Normalize placeholders (convert {{...}} -> {...}) and validate messages
-    let stream_online_message = request
-        .stream_online_message
-        .as_ref()
-        .map(|m| normalize_placeholders(m));
-    let stream_offline_message = request
-        .stream_offline_message
-        .as_ref()
-        .map(|m| normalize_placeholders(m));
-    let stream_title_change_message = request
-        .stream_title_change_message
-        .as_ref()
-        .map(|m| normalize_placeholders(m));
-    let stream_category_change_message = request
-        .stream_category_change_message
-        .as_ref()
-        .map(|m| normalize_placeholders(m));
-    let reward_redemption_message = request
-        .reward_redemption_message
-        .as_ref()
-        .map(|m| normalize_placeholders(m));
-
-    if let Some(ref msg) = stream_online_message {
-        validate_message(msg, "stream_online")?;
-    }
-    if let Some(ref msg) = stream_offline_message {
-        validate_message(msg, "stream_offline")?;
-    }
-    if let Some(ref msg) = stream_title_change_message {
-        validate_message(msg, "stream_title_change")?;
-    }
-    if let Some(ref msg) = stream_category_change_message {
-        validate_message(msg, "stream_category")?;
-    }
-    if let Some(ref msg) = reward_redemption_message {
-        validate_message(msg, "reward_redemption")?;
-    }
-
-    let update = UpdateNotificationSettings {
-        stream_online_message,
-        stream_offline_message,
-        stream_title_change_message,
-        stream_category_change_message,
-        reward_redemption_message,
-        notify_reward_redemption: None,
-    };
-
-    let settings = NotificationSettingsRepository::update(&state.db, &owner_id, update).await?;
+    let settings = SettingsService::update_messages(
+        &state,
+        &owner_id,
+        request.stream_online_message,
+        request.stream_offline_message,
+        request.stream_title_change_message,
+        request.stream_category_change_message,
+        request.reward_redemption_message,
+    )
+    .await?;
 
     Ok(Json(MessagesResponse {
         stream_online_message: settings.stream_online_message,
@@ -707,26 +527,11 @@ async fn reset_to_defaults_for_user(
         return reset_to_defaults(State(state), AuthUser(user)).await;
     }
 
-    // Ensure shared with manage rights
-    let share =
-        SettingsShareRepository::find_by_owner_and_grantee(&state.db, &owner_id, &user.id).await?;
-    match share {
-        Some(s) if s.can_manage => {}
-        _ => return Err(AppError::Forbidden),
+    if !crate::services::integrations::IntegrationService::check_access(&state, &owner_id, &user.id, true).await? {
+        return Err(AppError::Forbidden);
     }
 
-    let defaults = NotificationSettings::default();
-
-    let update = UpdateNotificationSettings {
-        stream_online_message: Some(defaults.stream_online_message.clone()),
-        stream_offline_message: Some(defaults.stream_offline_message.clone()),
-        stream_title_change_message: Some(defaults.stream_title_change_message.clone()),
-        stream_category_change_message: Some(defaults.stream_category_change_message.clone()),
-        reward_redemption_message: Some(defaults.reward_redemption_message.clone()),
-        notify_reward_redemption: Some(defaults.notify_reward_redemption),
-    };
-
-    let settings = NotificationSettingsRepository::update(&state.db, &owner_id, update).await?;
+    let settings = SettingsService::reset_to_defaults(&state, &owner_id).await?;
 
     Ok(Json(MessagesResponse {
         stream_online_message: settings.stream_online_message,
@@ -741,59 +546,6 @@ async fn reset_to_defaults_for_user(
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-/// Validate a notification message
-fn validate_message(message: &str, message_type: &str) -> AppResult<()> {
-    // Check message length
-    if message.is_empty() {
-        return Err(AppError::Validation(format!(
-            "{} message cannot be empty",
-            message_type
-        )));
-    }
-
-    if message.len() > 4096 {
-        return Err(AppError::Validation(format!(
-            "{} message cannot exceed 4096 characters",
-            message_type
-        )));
-    }
-
-    Ok(())
-}
-
-/// Normalize placeholders in a message template.
-/// Converts occurrences like `{{streamer}}` into `{streamer}`.
-///
-/// This allows the UI to show placeholders with double braces (e.g. `{{streamer}}`)
-/// while the stored templates and server-side replacements use a single pair (`{streamer}`).
-fn normalize_placeholders(msg: &str) -> String {
-    let mut result = String::with_capacity(msg.len());
-    let mut start = 0usize;
-
-    while let Some(open_rel) = msg[start..].find("{{") {
-        let open = start + open_rel;
-        if let Some(close_rel) = msg[open + 2..].find("}}") {
-            let close = open + 2 + close_rel;
-            // append text before the opening braces
-            result.push_str(&msg[start..open]);
-            // take inner content and wrap it with a single pair of braces
-            let inner = &msg[open + 2..close];
-            result.push('{');
-            result.push_str(inner);
-            result.push('}');
-            start = close + 2;
-        } else {
-            // no closing braces found; append rest and return
-            result.push_str(&msg[start..]);
-            return result;
-        }
-    }
-
-    // append remaining text
-    result.push_str(&msg[start..]);
-    result
-}
 
 fn get_placeholders_info() -> PlaceholdersInfo {
     PlaceholdersInfo {
