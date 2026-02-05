@@ -56,8 +56,6 @@ impl EventSubSubscriptionRepository {
         .map_err(AppError::Database)
     }
 
-    // find_by_user_id_and_type removed - unused
-
     /// List all subscriptions for a user
     pub async fn find_by_user_id(
         pool: &SqlitePool,
@@ -151,6 +149,4 @@ impl EventSubSubscriptionRepository {
 
         Ok(())
     }
-
-    // delete_by_twitch_subscription_id removed - unused
 }
