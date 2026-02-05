@@ -71,9 +71,12 @@ export default function TelegramSettings({ redirectTo = '/settings' }: { redirec
         : 'ru';
     script.setAttribute('data-lang', lang);
 
-    // Include redirect_to so the backend can redirect the user back to the provided redirectTo
-    // Use the API base URL so the Telegram Login Widget posts directly to the backend
-    const authUrl = `${getApiUrl()}/api/auth/telegram/link?redirect_to=${encodeURIComponent(
+    // Telegram Login Widget redirects the browser with GET + query params; the backend
+    // /api/auth/telegram/link endpoint only accepts POST. So send the user to the frontend
+    // callback page, which will POST the payload to the backend with the auth token and
+    // then redirect to redirectTo.
+    const frontendOrigin = typeof window !== 'undefined' ? window.location.origin : getApiUrl();
+    const authUrl = `${frontendOrigin}/integrations/telegram/callback?redirect_to=${encodeURIComponent(
       redirectTo,
     )}`;
     script.setAttribute('data-auth-url', authUrl);
