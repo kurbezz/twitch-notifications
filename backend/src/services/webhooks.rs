@@ -37,7 +37,8 @@ pub struct StreamState {
 
 lazy_static::lazy_static! {
     static ref STREAM_STATE_CACHE: RwLock<HashMap<String, StreamState>> = RwLock::new(HashMap::new());
-    // Separate cache for tracking title/category changes (not part of stream status)
+    // Separate cache for tracking title/category changes: (title, category_name).
+    // Primed on stream.online so the first channel.update can detect changes.
     static ref CHANNEL_INFO_CACHE: RwLock<HashMap<String, (String, String)>> = RwLock::new(HashMap::new());
 }
 
@@ -73,6 +74,7 @@ pub struct ChannelUpdateEvent {
     pub broadcaster_user_id: String,
     pub broadcaster_user_name: String,
     pub title: String,
+    #[allow(dead_code)] // used for cache comparison via category_name
     pub category_id: String,
     pub category_name: String,
 }
@@ -321,7 +323,7 @@ impl WebhookService {
         state: &Arc<AppState>,
         event: StreamOnlineEvent,
     ) -> AppResult<()> {
-        // Update cache
+        // Update caches
         {
             let mut cache = STREAM_STATE_CACHE.write().await;
             cache.insert(
@@ -350,6 +352,15 @@ impl WebhookService {
         // Get stream info (with token refresh logic)
         let (title, category, thumbnail) =
             Self::get_stream_info(state, &user, &event.broadcaster_user_id).await;
+
+        // Prime channel info cache so handle_channel_update can detect title/category changes
+        {
+            let mut cache = CHANNEL_INFO_CACHE.write().await;
+            cache.insert(
+                event.broadcaster_user_id.clone(),
+                (title.clone(), category.clone()),
+            );
+        }
 
         // Send notifications
         let notification_service = NotificationService::new(state);
@@ -385,10 +396,14 @@ impl WebhookService {
         state: &Arc<AppState>,
         event: StreamOfflineEvent,
     ) -> AppResult<()> {
-        // Update cache
+        // Update caches
         {
-            let mut cache = STREAM_STATE_CACHE.write().await;
-            cache.remove(&event.broadcaster_user_id);
+            let mut stream_cache = STREAM_STATE_CACHE.write().await;
+            stream_cache.remove(&event.broadcaster_user_id);
+        }
+        {
+            let mut channel_cache = CHANNEL_INFO_CACHE.write().await;
+            channel_cache.remove(&event.broadcaster_user_id);
         }
 
         let user =
@@ -426,22 +441,23 @@ impl WebhookService {
             event.category_name
         );
 
-        // Check what changed using separate channel info cache
+        // Check what changed using channel info cache (title, category_name).
+        // If cache is empty (e.g. after restart during stream), we still send a notification.
         let (title_changed, category_changed) = {
             let mut cache = CHANNEL_INFO_CACHE.write().await;
-            let (prev_title, prev_category_id) = cache
+            let (prev_title, prev_category_name) = cache
                 .get(&event.broadcaster_user_id)
                 .cloned()
                 .unwrap_or((String::new(), String::new()));
 
-            let title_changed = !prev_title.is_empty() && prev_title != event.title;
-            let category_changed =
-                !prev_category_id.is_empty() && prev_category_id != event.category_id;
+            let cache_empty = prev_title.is_empty() && prev_category_name.is_empty();
+            let title_changed = cache_empty || prev_title != event.title;
+            let category_changed = cache_empty || prev_category_name != event.category_name;
 
             // Update channel info cache
             cache.insert(
                 event.broadcaster_user_id.clone(),
-                (event.title.clone(), event.category_id.clone()),
+                (event.title.clone(), event.category_name.clone()),
             );
 
             (title_changed, category_changed)
