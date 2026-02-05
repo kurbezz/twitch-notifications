@@ -938,112 +938,9 @@ impl Default for DiscordEmbed {
     }
 }
 
-// Color constants for embeds
+// Color constants for embeds (e.g. test notification in integrations)
 pub mod colors {
-    pub const TWITCH_PURPLE: u32 = 0x9146FF;
     pub const SUCCESS: u32 = 0x57F287;
-    pub const INFO: u32 = 0x5865F2;
-}
-
-/// Helper function to create a stream online notification embed.
-/// Uses the same rendered message as Telegram (user's template with {streamer}, {title}, {game}, {url}).
-pub fn create_stream_online_embed(
-    streamer_name: &str,
-    streamer_avatar: Option<&str>,
-    message: &str,
-    thumbnail_url: Option<&str>,
-    stream_url: &str,
-) -> DiscordEmbed {
-    let mut embed = DiscordEmbed::new()
-        .title(format!("🔴 {} is now live!", streamer_name))
-        .description(message)
-        .url(stream_url)
-        .color(colors::TWITCH_PURPLE)
-        .timestamp(chrono::Utc::now().to_rfc3339());
-
-    if let Some(avatar) = streamer_avatar {
-        embed = embed.author(
-            streamer_name,
-            Some(stream_url.to_string()),
-            Some(avatar.to_string()),
-        );
-    }
-
-    if let Some(thumbnail) = thumbnail_url {
-        let thumbnail_sized = thumbnail
-            .replace("{width}", "440")
-            .replace("{height}", "248");
-        embed = embed.image(thumbnail_sized);
-    }
-
-    embed
-}
-
-/// Helper function to create a stream offline notification embed.
-/// Uses the same rendered message as Telegram (user's template with {streamer}).
-pub fn create_stream_offline_embed(
-    streamer_name: &str,
-    stream_url: &str,
-    message: &str,
-) -> DiscordEmbed {
-    DiscordEmbed::new()
-        .title(format!("⚫ {} ended the stream", streamer_name))
-        .description(message)
-        .url(stream_url)
-        .color(colors::INFO)
-        .timestamp(chrono::Utc::now().to_rfc3339())
-}
-
-/// Title change embed using the user's rendered template (same text as Telegram).
-pub fn create_title_change_embed_with_message(
-    streamer_name: &str,
-    stream_url: &str,
-    message: &str,
-) -> DiscordEmbed {
-    DiscordEmbed::new()
-        .title(format!("📝 {} changed the stream title", streamer_name))
-        .description(message)
-        .url(stream_url)
-        .color(colors::INFO)
-        .timestamp(chrono::Utc::now().to_rfc3339())
-}
-
-/// Category change embed using the user's rendered template (same text as Telegram).
-pub fn create_category_change_embed_with_message(
-    streamer_name: &str,
-    stream_url: &str,
-    message: &str,
-) -> DiscordEmbed {
-    DiscordEmbed::new()
-        .title(format!("🎮 {} changed the category", streamer_name))
-        .description(message)
-        .url(stream_url)
-        .color(colors::INFO)
-        .timestamp(chrono::Utc::now().to_rfc3339())
-}
-
-/// Helper function to create a reward redemption notification embed.
-/// Uses the same rendered message as Telegram (user's template with {user}, {reward}, {cost}).
-pub fn create_reward_redemption_embed(
-    redeemer_name: &str,
-    _reward_name: &str,
-    _reward_cost: i32,
-    user_input: Option<&str>,
-    message: &str,
-) -> DiscordEmbed {
-    let mut embed = DiscordEmbed::new()
-        .title(format!("🎁 {} redeemed a reward!", redeemer_name))
-        .description(message)
-        .color(colors::SUCCESS)
-        .timestamp(chrono::Utc::now().to_rfc3339());
-
-    if let Some(input) = user_input {
-        if !input.is_empty() {
-            embed = embed.field("Message", input, false);
-        }
-    }
-
-    embed
 }
 
 #[async_trait::async_trait]
@@ -1051,77 +948,26 @@ impl crate::services::notifications::Notifier for DiscordService {
     async fn send_notification<'a>(
         &self,
         ctx: &crate::services::notifications::IntegrationContext,
-        content: crate::services::notifications::NotificationContent<'a>,
+        _content: crate::services::notifications::NotificationContent<'a>,
         _settings: &crate::db::NotificationSettings,
-        stream_url: Option<String>,
+        _stream_url: Option<String>,
         message: String,
     ) -> crate::error::AppResult<Option<i32>> {
-        let (embed, username, avatar) = match content {
-            crate::services::notifications::NotificationContent::StreamOnline(data) => {
-                let stream_url_ref = stream_url.as_deref().unwrap_or("");
-                let embed = create_stream_online_embed(
-                    &data.streamer_name,
-                    data.streamer_avatar.as_deref(),
-                    &message,
-                    data.thumbnail_url.as_deref(),
-                    stream_url_ref,
-                );
-                (
-                    embed,
-                    Some(format!("{} is live!", data.streamer_name.clone())),
-                    data.streamer_avatar.clone(),
-                )
-            }
-            crate::services::notifications::NotificationContent::StreamOffline(data) => {
-                let stream_url_ref = stream_url.as_deref().unwrap_or("");
-                let embed =
-                    create_stream_offline_embed(&data.streamer_name, stream_url_ref, &message);
-                (embed, Some(data.streamer_name.clone()), None)
-            }
-            crate::services::notifications::NotificationContent::TitleChange(data) => {
-                let stream_url_ref = stream_url.as_deref().unwrap_or("");
-                let embed = create_title_change_embed_with_message(
-                    &data.streamer_name,
-                    stream_url_ref,
-                    &message,
-                );
-                (embed, Some(data.streamer_name.clone()), None)
-            }
-            crate::services::notifications::NotificationContent::CategoryChange(data) => {
-                let stream_url_ref = stream_url.as_deref().unwrap_or("");
-                let embed = create_category_change_embed_with_message(
-                    &data.streamer_name,
-                    stream_url_ref,
-                    &message,
-                );
-                (embed, Some(data.streamer_name.clone()), None)
-            }
-            crate::services::notifications::NotificationContent::RewardRedemption(data) => {
-                let embed = create_reward_redemption_embed(
-                    &data.redeemer_name,
-                    &data.reward_name,
-                    data.reward_cost,
-                    data.user_input.as_deref(),
-                    &message,
-                );
-                (embed, Some(data.broadcaster_name.clone()), None)
-            }
-        };
-
+        // Send plain text message only (no embeds), same style as Telegram.
         if let Some(webhook_url) = &ctx.webhook_url {
             let msg = WebhookMessage {
-                content: None,
-                username,
-                avatar_url: avatar,
-                embeds: Some(vec![embed]),
+                content: Some(message),
+                username: None,
+                avatar_url: None,
+                embeds: None,
             };
             self.send_webhook_message(webhook_url, msg)
                 .await
                 .map(|_| None)
         } else {
             let msg = DiscordMessage {
-                content: None,
-                embeds: Some(vec![embed]),
+                content: Some(message),
+                embeds: None,
                 tts: None,
             };
             self.send_message(&ctx.destination_id, msg)
