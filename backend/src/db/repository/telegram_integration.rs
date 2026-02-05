@@ -6,6 +6,47 @@ use crate::db::models::*;
 use crate::db::UserRepository;
 use crate::error::{AppError, AppResult};
 
+// Intermediate structure for reading from DB (with String for chat_type)
+#[derive(sqlx::FromRow)]
+struct RowTelegramIntegration {
+    id: String,
+    user_id: String,
+    telegram_chat_id: String,
+    telegram_chat_title: Option<String>,
+    telegram_chat_type: Option<String>,
+    is_enabled: bool,
+    notify_stream_online: bool,
+    notify_stream_offline: bool,
+    notify_title_change: bool,
+    notify_category_change: bool,
+    notify_reward_redemption: bool,
+    created_at: chrono::NaiveDateTime,
+    updated_at: chrono::NaiveDateTime,
+}
+
+impl From<RowTelegramIntegration> for TelegramIntegration {
+    fn from(row: RowTelegramIntegration) -> Self {
+        TelegramIntegration {
+            id: row.id,
+            user_id: row.user_id,
+            telegram_chat_id: row.telegram_chat_id,
+            telegram_chat_title: row.telegram_chat_title,
+            telegram_chat_type: row
+                .telegram_chat_type
+                .as_deref()
+                .and_then(ChatType::from_str),
+            is_enabled: row.is_enabled,
+            notify_stream_online: row.notify_stream_online,
+            notify_stream_offline: row.notify_stream_offline,
+            notify_title_change: row.notify_title_change,
+            notify_category_change: row.notify_category_change,
+            notify_reward_redemption: row.notify_reward_redemption,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        }
+    }
+}
+
 // ============================================================================
 // Telegram Integration Repository
 // ============================================================================
@@ -31,8 +72,12 @@ impl TelegramIntegrationRepository {
             )));
         }
 
-        sqlx::query_as!(
-            TelegramIntegration,
+        let chat_type_str = integration
+            .telegram_chat_type
+            .map(|ct| ct.as_str().to_string());
+
+        let row = sqlx::query_as!(
+            RowTelegramIntegration,
             r#"
             INSERT INTO telegram_integrations (
                 id, user_id, telegram_chat_id, telegram_chat_title, telegram_chat_type,
@@ -60,7 +105,7 @@ impl TelegramIntegrationRepository {
             user_id,
             integration.telegram_chat_id,
             integration.telegram_chat_title,
-            integration.telegram_chat_type,
+            chat_type_str,
             true,
             true,
             false,
@@ -72,12 +117,14 @@ impl TelegramIntegrationRepository {
         )
         .fetch_one(pool)
         .await
-        .map_err(AppError::Database)
+        .map_err(AppError::Database)?;
+
+        Ok(row.into())
     }
 
     pub async fn find_by_id(pool: &SqlitePool, id: &str) -> AppResult<Option<TelegramIntegration>> {
-        sqlx::query_as!(
-            TelegramIntegration,
+        let row = sqlx::query_as!(
+            RowTelegramIntegration,
             r#"
             SELECT
                 id as "id!: String",
@@ -100,15 +147,17 @@ impl TelegramIntegrationRepository {
         )
         .fetch_optional(pool)
         .await
-        .map_err(AppError::Database)
+        .map_err(AppError::Database)?;
+
+        Ok(row.map(Into::into))
     }
 
     pub async fn find_by_user_id(
         pool: &SqlitePool,
         user_id: &str,
     ) -> AppResult<Vec<TelegramIntegration>> {
-        sqlx::query_as!(
-            TelegramIntegration,
+        let rows = sqlx::query_as!(
+            RowTelegramIntegration,
             r#"
             SELECT
                 id as "id!: String",
@@ -132,15 +181,17 @@ impl TelegramIntegrationRepository {
         )
         .fetch_all(pool)
         .await
-        .map_err(AppError::Database)
+        .map_err(AppError::Database)?;
+
+        Ok(rows.into_iter().map(Into::into).collect())
     }
 
     pub async fn find_by_chat_id(
         pool: &SqlitePool,
         chat_id: &str,
     ) -> AppResult<Vec<TelegramIntegration>> {
-        sqlx::query_as!(
-            TelegramIntegration,
+        let rows = sqlx::query_as!(
+            RowTelegramIntegration,
             r#"
             SELECT
                 id as "id!: String",
@@ -163,7 +214,9 @@ impl TelegramIntegrationRepository {
         )
         .fetch_all(pool)
         .await
-        .map_err(AppError::Database)
+        .map_err(AppError::Database)?;
+
+        Ok(rows.into_iter().map(Into::into).collect())
     }
 
     pub async fn exists(pool: &SqlitePool, chat_id: &str, user_id: &str) -> AppResult<bool> {
@@ -213,8 +266,8 @@ impl TelegramIntegrationRepository {
             .unwrap_or(current.notify_reward_redemption);
         let now = Utc::now().naive_utc();
 
-        sqlx::query_as!(
-            TelegramIntegration,
+        let row = sqlx::query_as!(
+            RowTelegramIntegration,
             r#"
             UPDATE telegram_integrations
             SET is_enabled = ?,
@@ -251,7 +304,9 @@ impl TelegramIntegrationRepository {
         )
         .fetch_one(pool)
         .await
-        .map_err(AppError::Database)
+        .map_err(AppError::Database)?;
+
+        Ok(row.into())
     }
 
     pub async fn delete(pool: &SqlitePool, id: &str) -> AppResult<()> {
@@ -267,8 +322,8 @@ impl TelegramIntegrationRepository {
         pool: &SqlitePool,
         user_id: &str,
     ) -> AppResult<Vec<TelegramIntegration>> {
-        sqlx::query_as!(
-            TelegramIntegration,
+        let rows = sqlx::query_as!(
+            RowTelegramIntegration,
             r#"
             SELECT
                 id as "id!: String",
@@ -292,6 +347,8 @@ impl TelegramIntegrationRepository {
         )
         .fetch_all(pool)
         .await
-        .map_err(AppError::Database)
+        .map_err(AppError::Database)?;
+
+        Ok(rows.into_iter().map(Into::into).collect())
     }
 }

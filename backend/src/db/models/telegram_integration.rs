@@ -2,13 +2,15 @@ use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
-#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+use super::ChatType;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TelegramIntegration {
     pub id: String,
     pub user_id: String,
     pub telegram_chat_id: String,
     pub telegram_chat_title: Option<String>,
-    pub telegram_chat_type: Option<String>,
+    pub telegram_chat_type: Option<ChatType>,
     pub is_enabled: bool,
 
     // Per-integration notification settings
@@ -26,7 +28,7 @@ pub struct TelegramIntegration {
 pub struct CreateTelegramIntegration {
     pub telegram_chat_id: String,
     pub telegram_chat_title: Option<String>,
-    pub telegram_chat_type: Option<String>,
+    pub telegram_chat_type: Option<ChatType>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

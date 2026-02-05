@@ -5,6 +5,7 @@
 //! `use crate::db::models::*;` continue to work.
 
 pub mod calendar;
+pub mod chat_type;
 pub mod discord_integration;
 pub mod eventsub_subscription;
 pub mod notification_history;
@@ -16,6 +17,7 @@ pub mod user;
 
 // Re-export all types at the `crate::db::models` namespace for backward compatibility.
 pub use self::calendar::*;
+pub use self::chat_type::*;
 pub use self::discord_integration::*;
 pub use self::eventsub_subscription::*;
 pub use self::notification_history::*;

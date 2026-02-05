@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::db::{
-    CreateDiscordIntegration, CreateTelegramIntegration, DiscordIntegrationRepository,
+    ChatType, CreateDiscordIntegration, CreateTelegramIntegration, DiscordIntegrationRepository,
     SettingsShareRepository, TelegramIntegrationRepository, UpdateDiscordIntegration,
     UpdateTelegramIntegration,
 };
@@ -34,11 +34,11 @@ impl IntegrationService {
     }
 
     /// Validate Telegram chat ID format
-    pub fn validate_telegram_chat_id(chat_id: &str, chat_type: Option<&str>) -> AppResult<()> {
+    pub fn validate_telegram_chat_id(chat_id: &str, chat_type: Option<ChatType>) -> AppResult<()> {
         let chat_id = chat_id.trim();
 
         match chat_type {
-            Some("group") => {
+            Some(ChatType::Group) => {
                 if chat_id.len() < 2
                     || !chat_id.starts_with('-')
                     || !chat_id[1..].chars().all(|c| c.is_ascii_digit())
@@ -48,7 +48,7 @@ impl IntegrationService {
                     )));
                 }
             }
-            Some("supergroup") | Some("channel") => {
+            Some(ChatType::Supergroup) | Some(ChatType::Channel) => {
                 if chat_id.len() < 5
                     || !chat_id.starts_with("-100")
                     || !chat_id[4..].chars().all(|c| c.is_ascii_digit())
@@ -120,10 +120,10 @@ impl IntegrationService {
         owner_id: &str,
         auth_user: &crate::db::User,
         owner_user: &crate::db::User,
-        chat_type: Option<&str>,
+        chat_type: Option<ChatType>,
         provided_chat_id: &str,
     ) -> AppResult<String> {
-        if chat_type == Some("private") {
+        if chat_type == Some(ChatType::Private) {
             if owner_id != auth_user.id {
                 // Creating for another user - use editor's telegram_user_id
                 auth_user.telegram_user_id.clone().ok_or_else(|| {
@@ -152,7 +152,7 @@ impl IntegrationService {
         owner_id: &str,
         chat_id: String,
         chat_title: Option<String>,
-        chat_type: Option<String>,
+        chat_type: Option<ChatType>,
     ) -> AppResult<crate::db::TelegramIntegration> {
         // Check if integration already exists
         let exists = TelegramIntegrationRepository::exists(&state.db, &chat_id, owner_id).await?;

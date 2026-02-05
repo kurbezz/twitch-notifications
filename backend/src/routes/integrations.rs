@@ -9,8 +9,8 @@ use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
 use crate::db::{
-    CreateDiscordIntegration, DiscordIntegration, TelegramIntegration, UpdateDiscordIntegration,
-    UpdateTelegramIntegration, UserRepository,
+    ChatType, CreateDiscordIntegration, DiscordIntegration, TelegramIntegration,
+    UpdateDiscordIntegration, UpdateTelegramIntegration, UserRepository,
 };
 use crate::error::{AppError, AppErrorWithDetails, AppResult};
 use crate::routes::auth::AuthUser;
@@ -146,7 +146,7 @@ pub struct TelegramIntegrationResponse {
     pub id: String,
     pub telegram_chat_id: String,
     pub telegram_chat_title: Option<String>,
-    pub telegram_chat_type: Option<String>,
+    pub telegram_chat_type: Option<ChatType>,
     pub is_enabled: bool,
     pub notify_stream_online: bool,
     pub notify_stream_offline: bool,
@@ -326,20 +326,24 @@ async fn create_telegram_integration(
 
     let chat_type = request
         .telegram_chat_type
-        .clone()
-        .or(Some("private".to_string()));
+        .as_deref()
+        .and_then(ChatType::from_str)
+        .or(Some(ChatType::Private));
     let chat_id = IntegrationService::determine_telegram_chat_id(
         &owner_id,
         &user,
         &owner,
-        chat_type.as_deref(),
+        chat_type,
         &request.telegram_chat_id,
     )?;
 
-    IntegrationService::validate_telegram_chat_id(&chat_id, chat_type.as_deref())?;
+    IntegrationService::validate_telegram_chat_id(&chat_id, chat_type)?;
 
     // Check admin permissions for non-private chats
-    if let Some("group") | Some("supergroup") | Some("channel") = chat_type.as_deref() {
+    if matches!(
+        chat_type,
+        Some(ChatType::Group | ChatType::Supergroup | ChatType::Channel)
+    ) {
         let owner_tg_id = owner.telegram_user_id.clone().ok_or_else(|| {
             AppError::Validation(crate::i18n::t("validation.owner_telegram_not_linked"))
         })?;
