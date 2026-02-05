@@ -69,6 +69,9 @@ pub struct StreamOfflineData {
 pub struct TitleChangeData {
     pub streamer_name: String,
     pub new_title: String,
+    /// Current category/game name (for {game} and {url} in templates). Defaults to "" for old queued payloads.
+    #[serde(default)]
+    pub category_name: String,
 }
 
 /// Data for category change notifications
@@ -174,22 +177,29 @@ mod tests {
 
     #[test]
     fn test_title_change_placeholder_replacement() {
-        let template = "📝 {streamer} изменил название стрима:\n\n{title}";
+        let template = "📝 {streamer} изменил название стрима:\n\n{title}\n🎮 {game}\n{url}";
+        let stream_url = "https://twitch.tv/hafmc";
         let data = TitleChangeData {
             streamer_name: "HafMC".to_string(),
             new_title: "Новое название стрима".to_string(),
+            category_name: "Just Chatting".to_string(),
         };
 
         let rendered = template
             .replace("{streamer}", &data.streamer_name)
-            .replace("{title}", &data.new_title);
+            .replace("{title}", &data.new_title)
+            .replace("{category}", &data.category_name)
+            .replace("{game}", &data.category_name)
+            .replace("{url}", stream_url);
 
         assert_eq!(
             rendered,
-            "📝 HafMC изменил название стрима:\n\nНовое название стрима"
+            "📝 HafMC изменил название стрима:\n\nНовое название стрима\n🎮 Just Chatting\nhttps://twitch.tv/hafmc"
         );
         assert!(!rendered.contains("{streamer}"));
         assert!(!rendered.contains("{title}"));
+        assert!(!rendered.contains("{game}"));
+        assert!(!rendered.contains("{url}"));
     }
 
     #[test]
@@ -351,6 +361,46 @@ mod tests {
     }
 }
 
+/// Renders the notification message from settings template and content.
+/// Used by both sync send and the worker so {game}, {url}, etc. are always substituted.
+pub fn render_notification_message<'a>(
+    settings: &NotificationSettings,
+    content: NotificationContent<'a>,
+    stream_url: Option<&str>,
+) -> String {
+    let url = stream_url.unwrap_or("");
+    match content {
+        NotificationContent::StreamOnline(data) => settings
+            .stream_online_message
+            .replace("{streamer}", &data.streamer_name)
+            .replace("{title}", &data.title)
+            .replace("{category}", &data.category)
+            .replace("{game}", &data.category)
+            .replace("{url}", url),
+        NotificationContent::StreamOffline(data) => settings
+            .stream_offline_message
+            .replace("{streamer}", &data.streamer_name),
+        NotificationContent::TitleChange(data) => settings
+            .stream_title_change_message
+            .replace("{streamer}", &data.streamer_name)
+            .replace("{title}", &data.new_title)
+            .replace("{category}", &data.category_name)
+            .replace("{game}", &data.category_name)
+            .replace("{url}", url),
+        NotificationContent::CategoryChange(data) => settings
+            .stream_category_change_message
+            .replace("{streamer}", &data.streamer_name)
+            .replace("{category}", &data.new_category)
+            .replace("{game}", &data.new_category)
+            .replace("{url}", url),
+        NotificationContent::RewardRedemption(data) => settings
+            .reward_redemption_message
+            .replace("{user}", &data.redeemer_name)
+            .replace("{reward}", &data.reward_name)
+            .replace("{cost}", &data.reward_cost.to_string()),
+    }
+}
+
 /// Serialize the notification-specific payload so the background worker can
 /// reconstruct the original `NotificationContent` and re-send it.
 fn serialize_notification_content<'a>(content: NotificationContent<'a>) -> (String, String) {
@@ -478,33 +528,8 @@ impl NotificationService {
         // Build a stable stream URL that we can pass to notifiers
         let stream_url = Some(format!("https://twitch.tv/{}", user.twitch_login));
 
-        // Render the message according to user settings and content
-        let message = match content {
-            NotificationContent::StreamOnline(data) => settings
-                .stream_online_message
-                .replace("{streamer}", &data.streamer_name)
-                .replace("{title}", &data.title)
-                .replace("{category}", &data.category)
-                .replace("{game}", &data.category)
-                .replace("{url}", stream_url.as_deref().unwrap_or("")),
-            NotificationContent::StreamOffline(data) => settings
-                .stream_offline_message
-                .replace("{streamer}", &data.streamer_name),
-            NotificationContent::TitleChange(data) => settings
-                .stream_title_change_message
-                .replace("{streamer}", &data.streamer_name)
-                .replace("{title}", &data.new_title),
-            NotificationContent::CategoryChange(data) => settings
-                .stream_category_change_message
-                .replace("{streamer}", &data.streamer_name)
-                .replace("{category}", &data.new_category)
-                .replace("{game}", &data.new_category),
-            NotificationContent::RewardRedemption(data) => settings
-                .reward_redemption_message
-                .replace("{user}", &data.redeemer_name)
-                .replace("{reward}", &data.reward_name)
-                .replace("{cost}", &data.reward_cost.to_string()),
-        };
+        // Render the message so {game}, {url}, etc. are always substituted
+        let message = render_notification_message(&settings, content, stream_url.as_deref());
 
         let mut results: Vec<NotificationResult> = Vec::new();
 
@@ -991,6 +1016,69 @@ impl NotificationService {
         Ok(())
     }
 
+    /// Re-render message from template for a queued task so {game}, {url}, etc. are always substituted.
+    fn worker_render_message(
+        settings: &NotificationSettings,
+        notification_type: &str,
+        content_json: &str,
+        stream_url: Option<&str>,
+    ) -> AppResult<String> {
+        let message = match notification_type {
+            "stream_online" => {
+                let data: StreamOnlineData = serde_json::from_str(content_json)
+                    .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
+                render_notification_message(
+                    settings,
+                    NotificationContent::StreamOnline(&data),
+                    stream_url,
+                )
+            }
+            "stream_offline" => {
+                let data: StreamOfflineData = serde_json::from_str(content_json)
+                    .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
+                render_notification_message(
+                    settings,
+                    NotificationContent::StreamOffline(&data),
+                    stream_url,
+                )
+            }
+            "title_change" => {
+                let data: TitleChangeData = serde_json::from_str(content_json)
+                    .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
+                render_notification_message(
+                    settings,
+                    NotificationContent::TitleChange(&data),
+                    stream_url,
+                )
+            }
+            "category_change" => {
+                let data: CategoryChangeData = serde_json::from_str(content_json)
+                    .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
+                render_notification_message(
+                    settings,
+                    NotificationContent::CategoryChange(&data),
+                    stream_url,
+                )
+            }
+            "reward_redemption" => {
+                let data: RewardRedemptionData = serde_json::from_str(content_json)
+                    .map_err(|e| crate::error::AppError::Internal(anyhow::anyhow!(e)))?;
+                render_notification_message(
+                    settings,
+                    NotificationContent::RewardRedemption(&data),
+                    stream_url,
+                )
+            }
+            _ => {
+                return Err(crate::error::AppError::BadRequest(format!(
+                    "Unknown notification type: {}",
+                    notification_type
+                )))
+            }
+        };
+        Ok(message)
+    }
+
     /// Process a single queued notification task: attempt delivery, schedule retries,
     /// and move to DLQ when necessary.
     ///
@@ -1106,6 +1194,14 @@ impl NotificationService {
             webhook_url: task.webhook_url.clone(),
         };
 
+        // Re-render message from template so {game}, {url}, etc. are always substituted (avoids stale or partial placeholder in task.message).
+        let message = Self::worker_render_message(
+            &settings,
+            task.notification_type.as_str(),
+            &task.content_json,
+            stream_url.as_deref(),
+        )?;
+
         // Attempt sending via the appropriate service.
         let send_result: Result<(), crate::error::AppError> = match task.destination_type.as_str() {
             "telegram" => {
@@ -1138,7 +1234,7 @@ impl NotificationService {
                                 NotificationContent::StreamOnline(&data),
                                 &settings,
                                 stream_url,
-                                task.message.clone(),
+                                message.clone(),
                             )
                             .await
                     }
@@ -1151,7 +1247,7 @@ impl NotificationService {
                                 NotificationContent::StreamOffline(&data),
                                 &settings,
                                 stream_url,
-                                task.message.clone(),
+                                message.clone(),
                             )
                             .await
                     }
@@ -1164,7 +1260,7 @@ impl NotificationService {
                                 NotificationContent::TitleChange(&data),
                                 &settings,
                                 stream_url,
-                                task.message.clone(),
+                                message.clone(),
                             )
                             .await
                     }
@@ -1177,7 +1273,7 @@ impl NotificationService {
                                 NotificationContent::CategoryChange(&data),
                                 &settings,
                                 stream_url,
-                                task.message.clone(),
+                                message.clone(),
                             )
                             .await
                     }
@@ -1192,7 +1288,7 @@ impl NotificationService {
                                 NotificationContent::RewardRedemption(&data),
                                 &settings,
                                 stream_url,
-                                task.message.clone(),
+                                message.clone(),
                             )
                             .await
                     }
@@ -1231,7 +1327,7 @@ impl NotificationService {
                                 NotificationContent::StreamOnline(&data),
                                 &settings,
                                 stream_url,
-                                task.message.clone(),
+                                message.clone(),
                             )
                             .await
                     }
@@ -1244,7 +1340,7 @@ impl NotificationService {
                                 NotificationContent::StreamOffline(&data),
                                 &settings,
                                 stream_url,
-                                task.message.clone(),
+                                message.clone(),
                             )
                             .await
                     }
@@ -1257,7 +1353,7 @@ impl NotificationService {
                                 NotificationContent::TitleChange(&data),
                                 &settings,
                                 stream_url,
-                                task.message.clone(),
+                                message.clone(),
                             )
                             .await
                     }
@@ -1270,7 +1366,7 @@ impl NotificationService {
                                 NotificationContent::CategoryChange(&data),
                                 &settings,
                                 stream_url,
-                                task.message.clone(),
+                                message.clone(),
                             )
                             .await
                     }
@@ -1285,7 +1381,7 @@ impl NotificationService {
                                 NotificationContent::RewardRedemption(&data),
                                 &settings,
                                 stream_url,
-                                task.message.clone(),
+                                message.clone(),
                             )
                             .await
                     }

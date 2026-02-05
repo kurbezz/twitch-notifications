@@ -499,6 +499,7 @@ impl WebhookService {
             let data = TitleChangeData {
                 streamer_name: event.broadcaster_user_name.clone(),
                 new_title: event.title.clone(),
+                category_name: event.category_name.clone(),
             };
             notification_service
                 .send_notification(&user.id, NotificationContent::TitleChange(&data))
